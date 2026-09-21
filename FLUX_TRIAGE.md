@@ -13,10 +13,13 @@ rebased onto `main` c4605619), toolchain `nightly-2026-08-21`.
 | `core::ptr` call sites | **65** (18 `copy_nonoverlapping`, 4 `copy`, 1 `write`, rest `.add`/`.offset_from`/`as_ptr`) |
 | refinement errors | **357** over **120 unique locations** |
 | of which pointer preconditions | **332** |
-| ICEs after `flux_thaw` | **0** |
+| distinct flux ICEs | **2** (1 live in this config, trusted out) |
 
-Hits the ≤3000 LOC target, dense in `core::ptr`, and — the standout result —
-**does not crash flux**. Zero ICEs in this configuration.
+Hits the ≤3000 LOC target and is dense in `core::ptr`. It does crash flux, but
+only in **one** place: `block::compress::compress_internal` triggers
+`checker.rs:2660 impossible case reached`. That one function is `trusted` to get
+past it; everything else checks. See "ICEs" below — do not quote this crate as
+ICE-free.
 
 ## The specs are the shape we wanted
 
@@ -64,8 +67,8 @@ lz4_flex is effectively two crates behind one feature flag.
 
 | config | LOC | live ptr sites | errors | ICEs |
 |---|---:|---:|---:|---:|
-| upstream default (`safe-encode`,`safe-decode`,`frame`) | 4,076 | **0** | 42 | 3 |
-| pointer config (`std`,`checked-decode`) | 2,910 | 65 | **357** | 0 |
+| upstream default (`safe-encode`,`safe-decode`,`frame`) | 4,076 | **0** | 42 | 3 sites / 2 bugs |
+| pointer config (`std`,`checked-decode`) | 2,910 | 65 | **357** | 1 site / 1 bug |
 
 The upstream default `cfg`s out every pointer path (`lib.rs:135` even applies
 `forbid(unsafe_code)` to `mod sink` under those features), and `frame/` is 1,476
@@ -102,12 +105,27 @@ A minimal 40-line reproduction is in the session scratchpad: six deliberate
 
 ## Caveats
 
-- **3 functions are trusted** from the safe-config `flux_thaw` pass:
-  `block::compress::compress_internal` (a real coverage gap — it is the main
-  compression driver) and `read_to_string`/`read_to_end` in `frame/decompress.rs`
-  plus a `trusted_impl`, which are now `cfg`'d out anyway. Two distinct flux bugs:
-  `checker.rs:2627 impossible case reached` and `type_env.rs:564`.
-  `flux_thaw` found **no** ICEs in the pointer config.
+## ICEs
+
+Three ICE sites, **two distinct flux bugs**:
+
+| bug | site | live in pointer config? |
+|---|---|:-:|
+| `checker.rs:2660: impossible case reached` | `block::compress::compress_internal` | **yes** |
+| `type_env.rs:564` | `frame/decompress.rs` `read_to_string` / `read_to_end` (+ `trusted_impl` on the enclosing `io::Read` impl) | no — `frame` is `cfg`'d out |
+
+`compress_internal` is `trusted`, and **that annotation is load-bearing**: remove
+it and the ICE reproduces immediately, aborting the run (error count collapses
+from 357 to 19 because flux bails early). Verified against driver `3450fb82`;
+the line number moved from 2627 to 2660 across the rebuild, same bug.
+
+So the 357 figure is measured **with `compress_internal` trusted**. It is the
+main compression driver, so this is a genuine coverage gap, not cosmetic.
+`flux_thaw` reported no ICEs in the pointer config only because the annotation
+was already in place from the safe-config pass.
+
+One bug, one function, worth reporting upstream. That is still a good result
+compared to smallvec/bytes, but it is not "no ICEs".
 - Compilation aborts on error, so more may surface as these are discharged.
 - The 42-error safe-config figure is not comparable to smallvec/bytes in
   `current_errors.md`; the 357 figure is.
