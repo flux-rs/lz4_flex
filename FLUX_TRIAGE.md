@@ -9,7 +9,7 @@ rebased onto `main` c4605619), toolchain `nightly-2026-08-21`.
 
 | | value |
 |---|---|
-| size (pointer config) | **~2,900 LOC** across 7 files |
+| size (pointer config) | **2,910 LOC** across 8 files |
 | `core::ptr` call sites | **65** (18 `copy_nonoverlapping`, 4 `copy`, 1 `write`, rest `.add`/`.offset_from`/`as_ptr`) |
 | refinement errors | **357** over **120 unique locations** |
 | of which pointer preconditions | **332** |
@@ -57,12 +57,15 @@ fixed-size array, × 3 table types × get/put).
 
 ## Two configurations
 
+(LOC below = source actually compiled in that configuration, not the
+4,881 lines on disk.)
+
 lz4_flex is effectively two crates behind one feature flag.
 
 | config | LOC | live ptr sites | errors | ICEs |
 |---|---:|---:|---:|---:|
-| upstream default (`safe-encode`,`safe-decode`,`frame`) | 4,871 | **0** | 42 | 3 |
-| pointer config (`std`,`checked-decode`) | ~2,900 | 65 | **357** | 0 |
+| upstream default (`safe-encode`,`safe-decode`,`frame`) | 4,076 | **0** | 42 | 3 |
+| pointer config (`std`,`checked-decode`) | 2,910 | 65 | **357** | 0 |
 
 The upstream default `cfg`s out every pointer path (`lib.rs:135` even applies
 `forbid(unsafe_code)` to `mod sink` under those features), and `frame/` is 1,476
