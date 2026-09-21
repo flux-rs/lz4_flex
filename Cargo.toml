@@ -50,6 +50,12 @@ nightly = []
 
 [dependencies]
 twox-hash = { version = "2.0.0", default-features = false, features = ["xxhash32"], optional = true }
+# Pinned to the revision the locally-installed `flux` driver was built from
+# (branch kris-gaudel/auto-strong-returned). `main` has diverged and its
+# flux-alloc requires driver features this driver does not have.
+flux-rs = { git = "https://github.com/flux-rs/flux", rev = "916dea78" }
+flux-core = { git = "https://github.com/flux-rs/flux", rev = "916dea78" }
+flux-alloc = { git = "https://github.com/flux-rs/flux", rev = "916dea78" }
 
 [profile.bench]
 codegen-units = 1
@@ -76,3 +82,11 @@ path = "benches/binggan_bench.rs"
 # harness = false
 # name = "bench"
 # path = "benches/bench.rs"
+
+[package.metadata.flux]
+enabled = true
+cache = true
+
+# `flux` is set by `cargo flux`, not by cargo itself, so it has to be declared
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(flux)'] }
