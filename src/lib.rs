@@ -93,6 +93,16 @@
 #[cfg_attr(test, macro_use)]
 extern crate alloc;
 
+// CENTRIFUGE: required for flux's `extern_spec`s on core::ptr / alloc to
+// register. Without these the specs are silently inert and pointer
+// preconditions (valid / aligned_to / nonoverlapping / in_bounds) are never
+// checked. Same declarations as crates/bytes and crates/tinyvec.
+#[allow(unused_extern_crates)]
+extern crate flux_core;
+#[cfg(feature = "alloc")]
+#[allow(unused_extern_crates)]
+extern crate flux_alloc;
+
 #[cfg(test)]
 #[macro_use]
 extern crate more_asserts;

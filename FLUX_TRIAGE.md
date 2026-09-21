@@ -1,88 +1,125 @@
 # lz4_flex — Flux candidacy triage
 
-Baseline taken 2026-09-21 against flux driver `916dea78`
-(branch `kris-gaudel/auto-strong-returned`), toolchain `nightly-2026-08-21`.
-Default feature set: `std, safe-encode, safe-decode, frame, checked-decode`.
+Baseline 2026-09-21. Driver `flux 3450fb82` (branch `kris-gaudel/auto-strong-returned`
+rebased onto `main` c4605619), toolchain `nightly-2026-08-21`.
 
-## Verdict: strong candidate — the best of the four crates tried so far
+**Configuration matters enormously here — see "Two configurations" below.**
 
-42 refinement errors across 41 unique source locations, in **exactly two
-categories**, with **zero pointer-precondition errors**. For comparison with
-`../../current_errors.md`:
+## Verdict: strong candidate
 
-| crate        | total errors | categories | pointer preconditions (unique locs) |
-|--------------|-------------:|-----------:|------------------------------------:|
-| smallvec     |          181 |          7 |                           157 (42)  |
-| bytes        |          120 |          9 |                            76 (22)  |
-| tinyvec      |           74 |          8 |                              0      |
-| **lz4_flex** |       **42** |      **2** |                          **0**      |
+| | value |
+|---|---|
+| size (pointer config) | **~2,900 LOC** across 7 files |
+| `core::ptr` call sites | **65** (18 `copy_nonoverlapping`, 4 `copy`, 1 `write`, rest `.add`/`.offset_from`/`as_ptr`) |
+| refinement errors | **357** over **120 unique locations** |
+| of which pointer preconditions | **332** |
+| ICEs after `flux_thaw` | **0** |
 
-(Category and pointer counts for the first three are from `current_errors.md`;
-it does not report unique-location totals for the other categories, so those
-columns are omitted rather than guessed. lz4_flex's 42 errors span 41 unique
-locations.)
+Hits the ≤3000 LOC target, dense in `core::ptr`, and — the standout result —
+**does not crash flux**. Zero ICEs in this configuration.
 
-The near-1:1 error-to-location ratio matters: in smallvec/bytes a single
-`ptr::copy` fails 4 sub-conditions, so the raw counts overstate the real work.
-Here every error is its own distinct obligation.
+## The specs are the shape we wanted
 
-## Error breakdown
+| failed precondition | count |
+|---|---:|
+| `in_bounds(p) && count * T::size_of() <= p.size` | 151 |
+| `p.base == op.base` (`offset_from` same-allocation) | 15 |
+| `in_bounds(p) && count * T::size_of() <= p.addr - p.base` | 8 |
+| `valid(p, T::size_of()) && aligned_to(p, T::align_of())` | 4 |
+| (multi-line `requires` not parsed by the tally script) | 154 |
 
-| file                        | underflow | out-of-bounds | total |
-|-----------------------------|----------:|--------------:|------:|
-| src/block/decompress_safe.rs |         7 |             0 |     7 |
-| src/block/hashtable.rs       |         0 |             6 |     6 |
-| src/frame/compress.rs        |         6 |             0 |     6 |
-| src/sink.rs                  |         2 |             4 |     6 |
-| src/block/compress.rs        |         3 |             2 |     5 |
-| src/frame/decompress.rs      |         5 |             0 |     5 |
-| src/fastcpy.rs               |         2 |             2 |     4 |
-| src/frame/header.rs          |         2 |             1 |     3 |
-| **TOTAL**                    |    **27** |        **15** | **42** |
+Essentially all of it is "is this pointer in bounds of its allocation" — no
+aliasing, no lifetime, no temporal reasoning. Alignment barely appears (4) because
+everything is `u8`, so `align_of() == 1` is trivially satisfied.
 
-Spread over 22 functions. No `unwrap`/`expect` preconditions, no missing
-associated refinements, no unsupported casts, no postcondition failures.
+## Where the work is
 
-## Why it looks tractable
+| file | errors | unique locs |
+|---|---:|---:|
+| src/block/decompress.rs | 238 | 57 |
+| src/fastcpy_unsafe.rs | 45 | 16 |
+| src/block/compress.rs | 38 | 23 |
+| src/sink.rs | 18 | 7 |
+| src/block/hashtable.rs | 9 | 9 |
+| src/fastcpy.rs | 8 | 7 |
+| src/block/mod.rs | 1 | 1 |
 
-1. **Safe by default.** The crate's default features select the safe
-   encode/decode paths; the 90 `unsafe` occurrences live in
-   `decompress.rs` / `fastcpy_unsafe.rs`, which are `cfg`'d out. That is
-   precisely what kept the pointer-precondition category empty.
-2. **`hashtable.rs` is 6 errors of one shape** — `self.dict[hash >> SHIFT]`
-   indexing a fixed-size array, repeated across `HashTable4K`/`4KU16`/`8K`
-   × `get_at`/`put_at`. One `refined_by`/`invariant` pattern should clear
-   all six.
-3. **Underflows are the classic `len - offset` shape**, e.g.
-   `input.len() - END_OFFSET`, `input.len() - start`. These need a
-   precondition relating the two, which is exactly what Phase 1 type
-   invariants are for.
-4. **`SliceSink` (6 errors) is the central abstraction** — refining it with
-   `refined_by(pos, cap)` plus `invariant(pos <= cap)` likely cascades into
-   `decompress_safe.rs` and `fastcpy.rs`.
+Concentrated in a handful of functions: `decompress_internal` (122),
+`duplicate_overlapping` (34), `copy_from_dict` (34), `wild_copy_from_src` (29),
+`duplicate` (22). The 357→120 ratio is the usual inflation — one
+`copy_nonoverlapping` fails `valid(src)`, `valid(dst)` and `nonoverlapping`
+separately.
+
+Likely leverage: `SliceSink` (7 locations) is the central abstraction; refining it
+with `refined_by(pos, cap)` + `invariant(pos <= cap)` should cascade widely.
+`hashtable.rs` is 9 errors of a single shape (`self.dict[hash >> SHIFT]` into a
+fixed-size array, × 3 table types × get/put).
+
+## Two configurations
+
+lz4_flex is effectively two crates behind one feature flag.
+
+| config | LOC | live ptr sites | errors | ICEs |
+|---|---:|---:|---:|---:|
+| upstream default (`safe-encode`,`safe-decode`,`frame`) | 4,871 | **0** | 42 | 3 |
+| pointer config (`std`,`checked-decode`) | ~2,900 | 65 | **357** | 0 |
+
+The upstream default `cfg`s out every pointer path (`lib.rs:135` even applies
+`forbid(unsafe_code)` to `mod sink` under those features), and `frame/` is 1,476
+LOC with zero pointer use. **`Cargo.toml`'s `default` has been flipped to
+`["std", "checked-decode"]`** for this experiment; the original is preserved in a
+comment directly above it.
+
+`checked-decode` is deliberately kept on — it adds the runtime bounds checks that
+make the obligations provable. Dropping it would raise the error count and lower
+the chance of discharging them.
+
+## REQUIRED setup step, missing from docs/design.md
+
+`extern crate flux_core;` must appear in the crate root or **flux's `extern_spec`s
+on `core::ptr` are silently inert** — no error, no warning, just zero pointer
+obligations. This is not hypothetical: it cost this triage several wrong answers.
+Before adding it, this crate reported 28 errors and 0 pointer preconditions.
+After: 357 errors and 332 pointer preconditions.
+
+`crates/bytes/src/lib.rs:80-81` and `crates/tinyvec/src/lib.rs:101-102` already
+have these declarations; `smallvec` gets the same effect via `use flux_core::...`
+in `src/flux_specs.rs`. lz4_flex needed:
+
+```rust
+#[allow(unused_extern_crates)]   // lz4_flex has #![deny(warnings)]
+extern crate flux_core;
+#[cfg(feature = "alloc")]
+#[allow(unused_extern_crates)]
+extern crate flux_alloc;
+```
+
+A minimal 40-line reproduction is in the session scratchpad: six deliberate
+`core::ptr` violations report 1 error without `extern crate flux_core`, 15 with it.
 
 ## Caveats
 
-- **3 functions are trusted** to get past ICEs (see the `flux_thaw` commit):
-  `block::compress::compress_internal`, and `read_to_string`/`read_to_end`
-  in `frame/decompress.rs` plus a `trusted_impl` on the enclosing `io::Read`
-  impl. `compress_internal` is the main compression driver, so that one is a
-  real coverage gap, not a cosmetic one. Two distinct flux bugs:
+- **3 functions are trusted** from the safe-config `flux_thaw` pass:
+  `block::compress::compress_internal` (a real coverage gap — it is the main
+  compression driver) and `read_to_string`/`read_to_end` in `frame/decompress.rs`
+  plus a `trusted_impl`, which are now `cfg`'d out anyway. Two distinct flux bugs:
   `checker.rs:2627 impossible case reached` and `type_env.rs:564`.
-- The 42-error figure is for the **safe** configuration. Building with
-  `--no-default-features` to reach the unsafe paths would reintroduce the
-  pointer-precondition category and is a separate assessment.
-- Errors are counted from a run that aborts compilation; later passes may
-  surface more once earlier ones are discharged.
+  `flux_thaw` found **no** ICEs in the pointer config.
+- Compilation aborts on error, so more may surface as these are discharged.
+- The 42-error safe-config figure is not comparable to smallvec/bytes in
+  `current_errors.md`; the 357 figure is.
+
+## Known blocker for the rest of the pipeline
+
+`run_flux.py --make-targets` / `--check-uid` / `--check-type` need
+`FLUXFLAGS=-Fdump-call-graph`, which **does not exist in any ref of the local flux
+repo, including `main`**. That disables Phase 1/Phase 2 of `harness/CLAUDE.md`.
+`--check-def` works (`-Fdump-checker-trace` does exist).
 
 ## Reproduce
 
 ```bash
 cd crates/lz4_flex
-cargo flux                                   # 42 errors, 0 ICEs
-cargo flux check -p lz4_flex --only-check='def:<block::hashtable::HashTable4K as block::hashtable::HashTable>::get_at'
+cargo flux                       # 357 errors, 0 ICEs
+cargo flux check -p lz4_flex --only-check='def:block::decompress::copy_from_dict'
 ```
-
-Setup note: the flux deps are pinned to `rev = "916dea78"` to match the
-installed driver. Flux `main` (`c4605619`) has diverged — its `flux-alloc`
-fails to build against this driver (`no AllocatorClone in alloc`).

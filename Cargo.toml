@@ -38,7 +38,10 @@ git = "https://github.com/main--/rust-lz-fear"
  #features = ["std", "safe-encode", "safe-decode", "frame"]
 
 [features]
-default = ["std", "safe-encode", "safe-decode", "frame", "checked-decode"]
+# CENTRIFUGE EXPERIMENT: default flipped to the pointer-heavy configuration.
+# Upstream default is:
+# default = ["std", "safe-encode", "safe-decode", "frame", "checked-decode"]
+default = ["std", "checked-decode"]
 safe-decode = []
 safe-encode = []
 checked-decode = [] # Adds important checks while decoding. Only remove on trusted input!
@@ -50,12 +53,9 @@ nightly = []
 
 [dependencies]
 twox-hash = { version = "2.0.0", default-features = false, features = ["xxhash32"], optional = true }
-# Pinned to the revision the locally-installed `flux` driver was built from
-# (branch kris-gaudel/auto-strong-returned). `main` has diverged and its
-# flux-alloc requires driver features this driver does not have.
-flux-rs = { git = "https://github.com/flux-rs/flux", rev = "916dea78" }
-flux-core = { git = "https://github.com/flux-rs/flux", rev = "916dea78" }
-flux-alloc = { git = "https://github.com/flux-rs/flux", rev = "916dea78" }
+flux-rs = { git = "https://github.com/flux-rs/flux" }
+flux-core = { git = "https://github.com/flux-rs/flux" }
+flux-alloc = { git = "https://github.com/flux-rs/flux" }
 
 [profile.bench]
 codegen-units = 1
