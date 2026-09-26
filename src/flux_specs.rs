@@ -10,6 +10,13 @@ flux_rs::defs! {
         p.addr != 0 && p.base <= p.addr && 0 <= p.size && n <= p.size
     }
 
+    // Loop-invariant qualifiers. A local like `end = start + k` is indexed by the
+    // sum, so the sums are spelled out. Raw-pointer indices are split into their
+    // int fields (base, addr, size) during inference, so these take ints, not `ptr`.
+    qualifier LeSum(v: int, a: int, b: int) { v <= a + b }
+    qualifier Pos(x: int) { 0 < x }
+    qualifier CoversSum(size: int, v: int, a: int, b: int) { a + b <= size + v }
+
     // Bytes `copy_literals_wild(.., len)` actually copies (it over-copies in 8-byte steps).
     fn wild_len(len: int) -> int {
         if len <= 8 { 8 } else if len <= 16 { 16 } else if len <= 24 { 24 } else { len }

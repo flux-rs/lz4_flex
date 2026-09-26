@@ -106,6 +106,7 @@ fn token_from_literal_and_match_length(lit_len: usize, duplicate_length: usize) 
 /// The function ignores the last END_OFFSET bytes in input as those should be literals.
 #[inline]
 #[cfg(feature = "safe-encode")]
+#[flux_rs::qualifiers(crate::flux_specs::LeSum, crate::flux_specs::Pos, crate::flux_specs::CoversSum)]
 fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usize) -> usize {
     const USIZE_SIZE: usize = core::mem::size_of::<usize>();
     let cur_slice = &input[*cur..input.len() - END_OFFSET];
@@ -155,6 +156,9 @@ fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usi
 /// The function ignores the last END_OFFSET bytes in input as those should be literals.
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::spec(fn(input: &[u8][@n], cur: &strg usize[@c], source: &[u8][@m], candidate: usize) -> usize
+                requires candidate <= m
+                ensures cur: usize{v: c <= v && (c <= n => v <= n)})]
 fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usize) -> usize {
     let max_input_match = input.len().saturating_sub(*cur + END_OFFSET);
     let max_candidate_match = source.len() - candidate;

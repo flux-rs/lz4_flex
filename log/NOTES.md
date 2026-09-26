@@ -35,3 +35,11 @@ Crate-wide errors after Phase 1: 306 (baseline 357).
   The spec uses the true amount (`wild_len` in `src/flux_specs.rs`). Whether
   `compress_internal` ever calls it with `len == 0` near the end of the input is
   unchecked, because `compress_internal` is `trusted` (flux ICE).
+- Loop invariants (found on uid 16 `count_same_bytes`): flux's default
+  qualifiers can't express `cur <= start + k` when `end = start + k` is a local,
+  because the local is indexed by the sum. Raw pointers in loops need their
+  bounds carried too. `src/flux_specs.rs` defines `LeSum`, `Pos` and
+  `CoversSum`; attach them with `#[flux_rs::qualifiers(...)]`. Qualifier params
+  must be `int`: a raw pointer's index is split into its `base`/`addr`/`size`
+  fields during inference, so `ptr`-sorted qualifiers never match.
+  `#[flux_rs::opts(scrape_quals = true)]` didn't find these.
