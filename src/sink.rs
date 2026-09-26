@@ -48,7 +48,7 @@ pub(crate) trait Sink {
     /// Returns a raw ptr to the first unfilled byte of the Sink. Analogous to `[pos..].as_ptr()`.
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
     #[allow(dead_code)]
-    #[flux_rs::spec(fn(&mut Self[@s]) -> {b: int. *mut[b, b + Self::pos(s), Self::cap(s) - Self::pos(s)] u8 | 0 < b && Self::pos(s) <= Self::cap(s)})]
+    #[flux_rs::spec(fn(&mut Self[@s]) -> {b: int. *mut[b, b + Self::pos(s), Self::cap(s) - Self::pos(s)] u8 | 0 < b && 0 <= Self::pos(s) && Self::pos(s) <= Self::cap(s)})]
     unsafe fn pos_mut_ptr(&mut self) -> *mut u8;
 
     /// read byte at position
@@ -61,10 +61,10 @@ pub(crate) trait Sink {
     fn push(&mut self, byte: u8);
 
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
-    #[flux_rs::spec(fn(&mut Self[@s]) -> {b: int. *mut[b, b, Self::cap(s)] u8 | 0 < b && Self::pos(s) <= Self::cap(s)})]
+    #[flux_rs::spec(fn(&mut Self[@s]) -> {b: int. *mut[b, b, Self::cap(s)] u8 | 0 < b && 0 <= Self::pos(s) && Self::pos(s) <= Self::cap(s)})]
     unsafe fn base_mut_ptr(&mut self) -> *mut u8;
 
-    #[flux_rs::spec(fn(&Self[@s]) -> usize{v: v == Self::pos(s) && v <= Self::cap(s)})]
+    #[flux_rs::spec(fn(&Self[@s]) -> usize{v: v == Self::pos(s) && 0 <= v && v <= Self::cap(s)})]
     fn pos(&self) -> usize;
 
     #[flux_rs::spec(fn(&Self[@s]) -> usize{v: v == Self::cap(s) && Self::pos(s) <= v})]
@@ -109,7 +109,7 @@ pub(crate) trait Sink {
 /// # Invariants
 ///   - Bytes `[..pos()]` are always initialized.
 #[flux_rs::refined_by(pos: int, cap: int)]
-#[flux_rs::invariant(pos <= cap)]
+#[flux_rs::invariant(0 <= pos && pos <= cap)]
 pub(crate) struct SliceSink<'a> {
     /// The working slice, which may contain uninitialized bytes
     #[field(&mut [u8][cap])]
@@ -139,7 +139,7 @@ impl Sink for SliceSink<'_> {
     /// Returns a raw ptr to the first unfilled byte of the Sink. Analogous to `[pos..].as_ptr()`.
     #[inline]
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
-    #[flux_rs::spec(fn(&mut SliceSink[@s]) -> {b: int. *mut[b, b + s.pos, s.cap - s.pos] u8 | 0 < b && s.pos <= s.cap})]
+    #[flux_rs::spec(fn(&mut SliceSink[@s]) -> {b: int. *mut[b, b + s.pos, s.cap - s.pos] u8 | 0 < b && 0 <= s.pos && s.pos <= s.cap})]
     unsafe fn pos_mut_ptr(&mut self) -> *mut u8 {
         unsafe { self.base_mut_ptr().add(self.pos()) as *mut u8 }
     }
@@ -160,13 +160,13 @@ impl Sink for SliceSink<'_> {
     }
 
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
-    #[flux_rs::spec(fn(&mut SliceSink[@s]) -> {b: int. *mut[b, b, s.cap] u8 | 0 < b && s.pos <= s.cap})]
+    #[flux_rs::spec(fn(&mut SliceSink[@s]) -> {b: int. *mut[b, b, s.cap] u8 | 0 < b && 0 <= s.pos && s.pos <= s.cap})]
     unsafe fn base_mut_ptr(&mut self) -> *mut u8 {
         self.output.as_mut_ptr()
     }
 
     #[inline]
-    #[flux_rs::spec(fn(&SliceSink[@s]) -> usize{v: v == s.pos && v <= s.cap})]
+    #[flux_rs::spec(fn(&SliceSink[@s]) -> usize{v: v == s.pos && 0 <= v && v <= s.cap})]
     fn pos(&self) -> usize {
         self.pos
     }
@@ -244,7 +244,7 @@ impl Sink for SliceSink<'_> {
     not(all(feature = "safe-encode", feature = "safe-decode"))
 ))]
 #[flux_rs::refined_by(out: ptr, pos: int, cap: int)]
-#[flux_rs::invariant(0 < out.addr && out.base == out.addr && out.size == cap && pos <= cap)]
+#[flux_rs::invariant(0 < out.addr && out.base == out.addr && out.size == cap && 0 <= pos && pos <= cap)]
 pub(crate) struct PtrSink {
     /// The working slice, which may contain uninitialized bytes
     #[field(*mut[out] u8)]
@@ -293,7 +293,7 @@ impl Sink for PtrSink {
     /// Returns a raw ptr to the first unfilled byte of the Sink. Analogous to `[pos..].as_ptr()`.
     #[inline]
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
-    #[flux_rs::spec(fn(&mut PtrSink[@s]) -> {b: int. *mut[b, b + s.pos, s.cap - s.pos] u8 | 0 < b && s.pos <= s.cap})]
+    #[flux_rs::spec(fn(&mut PtrSink[@s]) -> {b: int. *mut[b, b + s.pos, s.cap - s.pos] u8 | 0 < b && 0 <= s.pos && s.pos <= s.cap})]
     unsafe fn pos_mut_ptr(&mut self) -> *mut u8 {
         unsafe { self.base_mut_ptr().add(self.pos()) as *mut u8 }
     }
@@ -316,13 +316,13 @@ impl Sink for PtrSink {
     }
 
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
-    #[flux_rs::spec(fn(&mut PtrSink[@s]) -> {b: int. *mut[b, b, s.cap] u8 | 0 < b && s.pos <= s.cap})]
+    #[flux_rs::spec(fn(&mut PtrSink[@s]) -> {b: int. *mut[b, b, s.cap] u8 | 0 < b && 0 <= s.pos && s.pos <= s.cap})]
     unsafe fn base_mut_ptr(&mut self) -> *mut u8 {
         self.output
     }
 
     #[inline]
-    #[flux_rs::spec(fn(&PtrSink[@s]) -> usize{v: v == s.pos && v <= s.cap})]
+    #[flux_rs::spec(fn(&PtrSink[@s]) -> usize{v: v == s.pos && 0 <= v && v <= s.cap})]
     fn pos(&self) -> usize {
         self.pos
     }
@@ -363,10 +363,8 @@ impl Sink for PtrSink {
                     ensures self: PtrSink{v: v.pos == s.pos + copy_len && v.cap == s.cap && copy_len <= n})]
     fn extend_from_slice_wild(&mut self, data: &[u8], copy_len: usize) {
         assert!(copy_len <= data.len());
-        // CENTRIFUGE: was `self.pos_mut_ptr()`, which is `self.output.add(self.pos)`.
-        // Reborrowing the `&strg self` for that call loses its `pos`/`cap` index in flux.
         unsafe {
-            core::ptr::copy_nonoverlapping(data.as_ptr(), self.output.add(self.pos), copy_len);
+            core::ptr::copy_nonoverlapping(data.as_ptr(), self.pos_mut_ptr(), copy_len);
         }
         self.pos += copy_len;
     }

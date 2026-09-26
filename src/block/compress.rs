@@ -499,7 +499,11 @@ fn push_byte(output: &mut impl Sink, el: u8) {
 
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
-fn push_byte(output: &mut impl Sink, el: u8) {
+// CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
+#[flux_rs::spec(fn(output: &strg S[@s], el: u8)
+                requires <S as Sink>::pos(s) < <S as Sink>::cap(s)
+                ensures output: S{v: <S as Sink>::pos(v) == <S as Sink>::pos(s) + 1 && <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+fn push_byte<S: Sink>(output: &mut S, el: u8) {
     unsafe {
         core::ptr::write(output.pos_mut_ptr(), el);
         output.set_pos(output.pos() + 1);

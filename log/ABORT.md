@@ -41,8 +41,7 @@ All `PtrSink` methods verify against the invariant except the two sites below.
      helper, which the harness forbids.
 - Needs: the region-disjointness assumption agreed with Ranjit/Evan.
 
-### Source change made while doing this uid
-`extend_from_slice_wild` now calls `self.output.add(self.pos)` instead of
-`self.pos_mut_ptr()` (same value). Reborrowing the `&strg self` for the method
-call lost the `pos`/`cap` index, which made `valid(dst)` unprovable. Marked
-`CENTRIFUGE` in the source.
+### Note
+`extend_from_slice_wild`'s `valid(dst)` was first unprovable because nothing said
+`pos >= 0` (`pos` is an `int` index). Fixed by adding `0 <= pos` to both sink
+invariants and the `Sink` trait's promises; no source change was needed.
