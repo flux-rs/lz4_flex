@@ -32,3 +32,4 @@ flux_rs::defs! {
         if len <= 8 { 8 } else if len <= 16 { 16 } else if len <= 24 { 24 } else { len }
     }
 }
+

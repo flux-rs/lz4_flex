@@ -150,9 +150,12 @@ impl Error for CompressError {}
 /// the rest of the bytes after the length encoding.
 #[inline]
 pub fn uncompressed_size(input: &[u8]) -> Result<(usize, &[u8]), DecompressError> {
-    let size = input.get(..4).ok_or(DecompressError::ExpectedAnotherByte)?;
-    let size: &[u8; 4] = size.try_into().unwrap();
-    let uncompressed_size = u32::from_le_bytes(*size) as usize;
+    // CENTRIFUGE: was `input.get(..4).ok_or(..)?` then `try_into().unwrap()` to `&[u8; 4]`.
+    // Same result and error; flux has no usable spec for `&[T] -> &[T; N]` (see log/NOTES.md).
+    if input.len() < 4 {
+        return Err(DecompressError::ExpectedAnotherByte);
+    }
+    let uncompressed_size = u32::from_le_bytes([input[0], input[1], input[2], input[3]]) as usize;
     let rest = &input[4..];
     Ok((uncompressed_size, rest))
 }

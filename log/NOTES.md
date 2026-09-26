@@ -43,3 +43,21 @@ Crate-wide errors after Phase 1: 306 (baseline 357).
   must be `int`: a raw pointer's index is split into its `base`/`addr`/`size`
   fields during inference, so `ptr`-sorted qualifiers never match.
   `#[flux_rs::opts(scrape_quals = true)]` didn't find these.
+- uid 61 `block::uncompressed_size`: rewrote `input.get(..4).ok_or(..)?` +
+  `try_into::<&[u8; 4]>().unwrap()` as an explicit `len < 4` check + indexing
+  (same result and error). An extern spec for `TryFrom<&[T]> for &[T; N]`
+  (`succeeds(n, out) = out.is_ok == (n == N)`) **crashes flux**: the blanket
+  `impl TryInto<U> for T` passes the *reference's* index, which is unit-sorted,
+  into `succeeds(n: int, ..)`, and fixpoint dies with
+  `Cannot unify Tuple0 with int`. Worth an upstream report.
+- `cargo test` after the Phase 2 source changes: 22 unit + 39 integration pass.
+  The 2 doctest failures are pre-existing: they use `lz4_flex::frame`, which the
+  flipped default features (`std`, `checked-decode`) compile out.
+
+## Source changes (all marked `CENTRIFUGE`)
+
+| where | change | why |
+|---|---|---|
+| `src/lib.rs` | `cfg_attr(flux, allow(unused_features))`; `mod flux_specs` | flux-injected feature vs `deny(warnings)`; spec defs |
+| `block/compress.rs` `push_byte`, `push_u16`, `write_integer`, `copy_literals_wild`, `handle_last_literals` | `output: &mut impl Sink` → `<S: Sink>(output: &mut S)` | specs must name `S` to use `S::pos`/`S::cap` |
+| `block/mod.rs` `uncompressed_size` | explicit length check instead of `try_into::<&[u8; 4]>().unwrap()` | see uid 61 above |
