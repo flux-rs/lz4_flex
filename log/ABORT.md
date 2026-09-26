@@ -74,3 +74,16 @@ room is left.
      expressible.
 - Possible fixes: a loop-invariant annotation in flux; or rewrite the loop so the
   count is computed first. Left as-is because the loop is the hot path's idiom.
+
+## Disjointness-assumption sites (`copy_nonoverlapping` across different allocations)
+
+Each of these functions verifies except for `nonoverlapping(src_p, dst_p, n)` on
+a copy between two different allocations. The pointers have unrelated `base`s,
+so flux can't prove it without the documented region-disjointness assumption
+(see `FLUX_TRIAGE.md`), which needs a `trusted` helper the harness forbids.
+One entry per function; the justification is why the regions can't overlap.
+
+| uid | function | copy | justification |
+|---|---|---|---|
+| 1 (type) | `<PtrSink as Sink>::extend_from_slice_wild` | caller slice → sink buffer | only caller copies input into a fresh `Vec` |
+| 10 | `block::compress::push_u16` | `el.to_le_bytes()` → sink | source is a fresh stack temporary |

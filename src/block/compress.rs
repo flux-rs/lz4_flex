@@ -523,7 +523,11 @@ fn push_u16(output: &mut impl Sink, el: u16) {
 
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
-fn push_u16(output: &mut impl Sink, el: u16) {
+// CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
+#[flux_rs::spec(fn(output: &strg S[@s], el: u16)
+                requires <S as Sink>::pos(s) + 2 <= <S as Sink>::cap(s)
+                ensures output: S{v: <S as Sink>::pos(v) == <S as Sink>::pos(s) + 2 && <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+fn push_u16<S: Sink>(output: &mut S, el: u16) {
     unsafe {
         core::ptr::copy_nonoverlapping(el.to_le_bytes().as_ptr(), output.pos_mut_ptr(), 2);
         output.set_pos(output.pos() + 2);
