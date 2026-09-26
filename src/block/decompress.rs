@@ -158,6 +158,12 @@ unsafe fn copy_from_dict(
 /// is encoded to _255 + 255 + 255 + 4 = 769_. The bytes after the first 4 is ignored, because
 /// 4 is the first non-0xFF byte.
 #[inline]
+#[flux_rs::spec(fn(input_ptr: &strg *const[@p] u8, _input_ptr_end: *const[@e] u8) -> Result<usize, DecompressError>
+                requires 0 < p.base && e.base == p.base && p.base <= p.addr && p.addr <= e.addr
+                      && 0 <= e.size && p.addr + p.size == e.addr + e.size
+                ensures input_ptr: *const{v: v.base == p.base && p.addr <= v.addr && v.addr <= e.addr
+                                             && v.addr + v.size == p.addr + p.size} u8)]
+#[flux_rs::qualifiers(Pos, Lockstep)]
 pub(super) fn read_integer_ptr(
     input_ptr: &mut *const u8,
     _input_ptr_end: *const u8,
@@ -193,6 +199,9 @@ pub(super) fn read_integer_ptr(
 
 /// Read the match offset as a little-endian 16-bit integer from the input stream.
 #[inline]
+#[flux_rs::spec(fn(input_ptr: &strg *const[@p] u8) -> Result<u16, DecompressError>
+                requires crate::flux_specs::readable(p, 2)
+                ensures input_ptr: *const[p.base, p.addr + 2, p.size - 2] u8)]
 fn read_match_offset(input_ptr: &mut *const u8) -> Result<u16, DecompressError> {
     let mut num: u16 = 0;
     unsafe {
