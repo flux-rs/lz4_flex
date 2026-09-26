@@ -11,6 +11,13 @@ use alloc::vec::Vec;
 
 /// Copies data to output_ptr by self-referential copy from start and match_length
 #[inline]
+#[flux_rs::spec(fn(output_ptr: &strg *mut[@o] u8, output_end: *mut[@e] u8, start: *const[@s] u8, match_length: usize)
+                requires 1 <= match_length && 0 < o.base
+                      && s.base == o.base && e.base == o.base
+                      && o.base <= s.addr && s.addr <= o.addr && o.addr <= e.addr && 0 <= e.size
+                      && s.addr + s.size == e.addr + e.size && o.addr + o.size == e.addr + e.size
+                      && match_length <= e.addr - o.addr
+                ensures output_ptr: *mut{v: v.base == o.base && v.addr == o.addr + match_length && v.size == o.size - match_length} u8)]
 unsafe fn duplicate(
     output_ptr: &mut *mut u8,
     output_end: *mut u8,
