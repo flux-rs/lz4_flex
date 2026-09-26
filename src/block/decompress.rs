@@ -65,6 +65,10 @@ fn wild_copy_from_src_16(mut source: *const u8, mut dst_ptr: *mut u8, num_items:
 /// Copy function, if the data start + match_length overlaps into output_ptr
 #[inline]
 #[cfg_attr(feature = "nightly", optimize(size))] // to avoid loop unrolling
+#[flux_rs::spec(fn(output_ptr: &strg *mut[@o] u8, start: *const[@s] u8, match_length: usize)
+                requires crate::flux_specs::writable(o, match_length) && crate::flux_specs::readable(s, match_length)
+                ensures output_ptr: *mut{v: v.base == o.base && v.addr == o.addr + match_length && v.size == o.size - match_length} u8)]
+#[flux_rs::qualifiers(Pos, CoversSum, Lockstep, LeSum, LtSum)]
 unsafe fn duplicate_overlapping(
     output_ptr: &mut *mut u8,
     mut start: *const u8,

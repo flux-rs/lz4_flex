@@ -104,6 +104,42 @@ Spec kept (callers are checked against it): `requires 0 < SIZE && SIZE <= num_by
 - Possible fixes: rewrite the exit test to `dst.add(SIZE) > dst_ptr_end`
   (equivalent, but changes the hot loop), or monomorphize to `16`.
 
+## function uid 65 — block::decompress::duplicate_overlapping (src/block/decompress.rs:66) — LIKELY REAL BUG
+
+Spec: `requires writable(o, match_length) && readable(s, match_length)`,
+`ensures *output_ptr == o + match_length` (same base, size reduced).
+Everything verifies (both `ptr::copy`s and the exact postcondition) except the
+loop test `output_ptr.add(1) < dst_ptr_end` (src/block/decompress.rs:80):
+`add`'s `count <= p.size` fails.
+
+Why it's real, not a flux gap: when `match_length` is even, `*output_ptr` reaches
+exactly `dst_ptr_end`, and the test then computes `dst_ptr_end.add(1)`. If the
+output has exactly `match_length` bytes left, that's two past the end of the
+allocation, which `ptr::add` documents as UB (the result must be in bounds or one
+past the end). The slow path in `decompress_internal` only checks
+`match_length <= output_end - output_ptr`, so this is reachable.
+
+Reproducer, derived by hand and **not yet run under Miri** (Miri isn't installed
+for `nightly-2026-08-21`):
+```rust
+// token 0x10: 1 literal, match length 4; literal 'a'; offset 1 (LE)
+let block = [0x10u8, b'a', 0x01, 0x00];
+let mut out = [0u8; 5];
+let _ = lz4_flex::block::decompress_into(&block, &mut out);
+// Slow path (input too short for the fast loop). duplicate() sees
+// offset 1 < 4 + 15, so it calls duplicate_overlapping(match_length = 4) with
+// exactly 4 bytes left: after two 2-byte steps *output_ptr == end, then
+// end.add(1) = out.as_ptr() + 6. The decoder then returns ExpectedAnotherByte.
+```
+Confirm with `rustup component add --toolchain nightly-2026-08-21 miri` then
+`cargo miri test` on a test containing the above.
+
+Possible fix: test `dst_ptr_end.offset_from(*output_ptr) > 1` (or compare
+addresses as `usize`) instead of forming `output_ptr.add(1)`.
+
+Not "fixed" here: requiring `writable(o, match_length + 1)` would only push the
+same impossible obligation to the caller.
+
 ## Disjointness-assumption sites (`copy_nonoverlapping` across different allocations)
 
 Each of these functions verifies except for `nonoverlapping(src_p, dst_p, n)` on
