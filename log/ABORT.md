@@ -75,6 +75,14 @@ room is left.
 - Possible fixes: a loop-invariant annotation in flux; or rewrite the loop so the
   count is computed first. Left as-is because the loop is the hot path's idiom.
 
+## function uid 20 — block::compress::handle_last_literals (src/block/compress.rs:250) — PARTIAL (blocked on uid 9)
+
+Spec: `requires start <= n && pos(s) + 1 + bytes_for_int(n - start) + (n - start) <= cap(s)`.
+The token `push_byte` and the `write_integer` call verify. The final
+`output.extend_from_slice(&input[start..])` fails its `pos + len <= cap`
+precondition, because uid 9 can't say how far `write_integer` advanced `pos`.
+Fixing uid 9's postcondition should fix this with no further change.
+
 ## Disjointness-assumption sites (`copy_nonoverlapping` across different allocations)
 
 Each of these functions verifies except for `nonoverlapping(src_p, dst_p, n)` on

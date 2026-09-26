@@ -247,7 +247,12 @@ pub(super) fn write_integer<S: Sink>(output: &mut S, mut n: usize) {
 
 /// Handle the last bytes from the input as literals
 #[cold]
-fn handle_last_literals(output: &mut impl Sink, input: &[u8], start: usize) {
+// CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
+#[flux_rs::spec(fn(output: &strg S[@s], input: &[u8][@n], start: usize)
+                requires start <= n
+                      && <S as Sink>::pos(s) + 1 + crate::flux_specs::bytes_for_int(n - start) + (n - start) <= <S as Sink>::cap(s)
+                ensures output: S{v: <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+fn handle_last_literals<S: Sink>(output: &mut S, input: &[u8], start: usize) {
     let lit_len = input.len() - start;
 
     let token = token_from_literal(lit_len);
