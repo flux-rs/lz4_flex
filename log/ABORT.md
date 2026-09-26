@@ -140,6 +140,22 @@ addresses as `usize`) instead of forming `output_ptr.add(1)`.
 Not "fixed" here: requiring `writable(o, match_length + 1)` would only push the
 same impossible obligation to the caller.
 
+## function uids 86, 91, 97 — HashTable8K / HashTable4K / HashTable4KU16 `::new` (src/block/hashtable.rs)
+
+- Error: `unwrap` precondition (`Result[true]`) on
+  `alloc::vec![0; N].into_boxed_slice().try_into().unwrap()`.
+- Root cause: needs `vec![0; N]` to have length `N`, `into_boxed_slice` to keep
+  it, and `TryFrom<Box<[T]>> for Box<[T; N]>` to succeed exactly when the length
+  is `N`. flux-alloc has none of these, and a local spec for the analogous
+  `TryFrom<&[T]> for &[T; N]` crashes flux (ICE 3 in
+  `~/Desktop/Code/flux/flux-ice-issues.md`).
+- Strategies tried: (1) no precondition applies (no arguments); (2) no struct
+  refinement helps (the array length is already in the type); (3) extern specs:
+  blocked by the crash above.
+- Not rewritten: `Box::new([0; N])` would lose the zeroed-allocation codegen the
+  source comment says is intentional.
+- Trivially safe by inspection: the `vec!` has exactly `N` elements.
+
 ## Disjointness-assumption sites (`copy_nonoverlapping` across different allocations)
 
 Each of these functions verifies except for `nonoverlapping(src_p, dst_p, n)` on

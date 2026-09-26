@@ -17,29 +17,39 @@ use alloc::boxed::Box;
 /// hashes and right shifts to a maximum value of 16bit, 65535
 /// The right shift is done in order to not exceed, the hashtables capacity
 #[inline]
+// CENTRIFUGE: `>> 16` -> `/ 65536` (same value; flux doesn't model `>>`). `strict`
+// overflow mode tells flux the product fits in a u32.
+#[flux_rs::opts(check_overflow = "strict")]
+#[flux_rs::spec(fn(u32) -> u32{v: v < 65536})]
 fn hash(sequence: u32) -> u32 {
-    (sequence.wrapping_mul(2654435761_u32)) >> 16
+    (sequence.wrapping_mul(2654435761_u32)) / 65536
 }
 
 /// hashes and right shifts to a maximum value of 16bit, 65535
 /// The right shift is done in order to not exceed, the hashtables capacity
 #[cfg(target_pointer_width = "64")]
 #[inline]
+#[flux_rs::opts(check_overflow = "strict")]
+#[flux_rs::spec(fn(usize) -> u32{v: v < 65536})]
 fn hash5(sequence: usize) -> u32 {
     let primebytes = if cfg!(target_endian = "little") {
         889523592379_usize
     } else {
         11400714785074694791_usize
     };
-    (((sequence << 24).wrapping_mul(primebytes)) >> 48) as u32
+    // CENTRIFUGE: `>> 48` -> `/ (1 << 48)` (same value; flux doesn't model `>>`).
+    (((sequence << 24).wrapping_mul(primebytes)) / 281_474_976_710_656) as u32
 }
 
 pub(crate) trait HashTable {
+    #[flux_rs::spec(fn(&Self, pos: usize{pos < 65536}) -> usize)]
     fn get_at(&self, pos: usize) -> usize;
+    #[flux_rs::spec(fn(&mut Self, pos: usize{pos < 65536}, val: usize))]
     fn put_at(&mut self, pos: usize, val: usize);
     fn clear(&mut self);
     #[inline]
     #[cfg(target_pointer_width = "64")]
+    #[flux_rs::spec(fn(input: &[u8][@n], pos: usize{pos + 8 <= n}) -> usize{v: v < 65536})]
     fn get_hash_at(input: &[u8], pos: usize) -> usize {
         hash5(super::compress::get_batch_arch(input, pos)) as usize
     }
@@ -52,6 +62,9 @@ pub(crate) trait HashTable {
 
 const HASHTABLE_SIZE_4K: usize = 4 * 1024;
 const HASHTABLE_BIT_SHIFT_4K: usize = 4;
+// CENTRIFUGE: `get_at`/`put_at` index with `hash / 16` instead of `hash >> HASHTABLE_BIT_SHIFT_4K`
+// (same value; flux doesn't model `>>`). Keep the two in sync:
+const _: () = assert!(1 << HASHTABLE_BIT_SHIFT_4K == 16);
 
 /// A 4K entry hash table using 16-bit values.
 #[derive(Debug)]
@@ -88,18 +101,21 @@ impl HashTable4KU16 {
 }
 impl HashTable for HashTable4KU16 {
     #[inline]
+    #[flux_rs::spec(fn(&Self, hash: usize{hash < 65536}) -> usize)]
     fn get_at(&self, hash: usize) -> usize {
-        self.dict[hash >> HASHTABLE_BIT_SHIFT_4K] as usize
+        self.dict[hash / 16] as usize
     }
     #[inline]
+    #[flux_rs::spec(fn(&mut Self, hash: usize{hash < 65536}, val: usize))]
     fn put_at(&mut self, hash: usize, val: usize) {
-        self.dict[hash >> HASHTABLE_BIT_SHIFT_4K] = val as u16;
+        self.dict[hash / 16] = val as u16;
     }
     #[inline]
     fn clear(&mut self) {
         self.dict.fill(0);
     }
     #[inline]
+    #[flux_rs::spec(fn(input: &[u8][@n], pos: usize{pos + 8 <= n}) -> usize{v: v < 65536})]
     fn get_hash_at(input: &[u8], pos: usize) -> usize {
         hash(super::get_batch(input, pos)) as usize
     }
@@ -145,12 +161,14 @@ impl HashTable4K {
 }
 impl HashTable for HashTable4K {
     #[inline]
+    #[flux_rs::spec(fn(&Self, hash: usize{hash < 65536}) -> usize)]
     fn get_at(&self, hash: usize) -> usize {
-        self.dict[hash >> HASHTABLE_BIT_SHIFT_4K] as usize
+        self.dict[hash / 16] as usize
     }
     #[inline]
+    #[flux_rs::spec(fn(&mut Self, hash: usize{hash < 65536}, val: usize))]
     fn put_at(&mut self, hash: usize, val: usize) {
-        self.dict[hash >> HASHTABLE_BIT_SHIFT_4K] = val as u32;
+        self.dict[hash / 16] = val as u32;
     }
     #[inline]
     fn clear(&mut self) {
@@ -160,6 +178,8 @@ impl HashTable for HashTable4K {
 
 const HASHTABLE_SIZE_8K: usize = 8 * 1024;
 const HASH_TABLE_BIT_SHIFT_8K: usize = 3;
+// CENTRIFUGE: `hash / 8` instead of `hash >> HASH_TABLE_BIT_SHIFT_8K` (same value). Keep in sync:
+const _: () = assert!(1 << HASH_TABLE_BIT_SHIFT_8K == 8);
 
 #[derive(Debug)]
 pub(crate) struct HashTable8K {
@@ -190,12 +210,14 @@ impl HashTable8K {
 }
 impl HashTable for HashTable8K {
     #[inline]
+    #[flux_rs::spec(fn(&Self, hash: usize{hash < 65536}) -> usize)]
     fn get_at(&self, hash: usize) -> usize {
-        self.dict[hash >> HASH_TABLE_BIT_SHIFT_8K] as usize
+        self.dict[hash / 8] as usize
     }
     #[inline]
+    #[flux_rs::spec(fn(&mut Self, hash: usize{hash < 65536}, val: usize))]
     fn put_at(&mut self, hash: usize, val: usize) {
-        self.dict[hash >> HASH_TABLE_BIT_SHIFT_8K] = val as u32;
+        self.dict[hash / 8] = val as u32;
     }
     #[inline]
     fn clear(&mut self) {
