@@ -1,0 +1,29 @@
+# Harness notes — lz4_flex
+
+Decisions that don't fit a DONE/ABORT checkpoint message.
+
+## Phase 1 (types)
+
+| uid | type | outcome |
+|---|---|---|
+| 0 | `sink::SliceSink` | DONE: `refined_by(pos, cap)`, `invariant(pos <= cap)`; `Sink` trait gets assoc `pos`/`cap` + method specs |
+| 1 | `sink::PtrSink` | ABORT (see ABORT.md): `refined_by(out: ptr, pos, cap)` + region invariant; `from_vec` and one `nonoverlapping` unprovable |
+| 2 | `block::hashtable::HashTable4KU16` | DONE, no annotation: `Box<[u16; 4096]>`, length fixed by the type. Remaining errors are method-level (Phase 2): `get_at`/`put_at` need `hash < 65536` on the `HashTable` trait; `new()` needs `vec![0; N].into_boxed_slice()` to have length `N` for `try_into().unwrap()` |
+| 3 | `block::hashtable::HashTable4K` | DONE, no annotation (as uid 2; `Box<[u32; 4096]>`) |
+| 4 | `block::hashtable::HashTable8K` | DONE, no annotation (as uid 2; `Box<[u32; 8192]>`, shift 3, so also `hash < 65536`) |
+| 5 | `block::DecompressError` | DONE: SAFE unannotated |
+| 6 | `block::CompressError` | DONE: SAFE unannotated |
+| 7 | `block::compress::CompressTable` | DONE: SAFE unannotated |
+
+Crate-wide errors after Phase 1: 306 (baseline 357).
+
+## Setup changes (not uid-specific)
+
+- `src/lib.rs`: `#![cfg_attr(flux, allow(unused_features))]`. Flux injects
+  `#![feature(custom_inner_attributes)]`, and once a check has no other errors
+  `deny(warnings)` fails the build on the unused-feature lint.
+- Flux driver: local branch `kris-gaudel/auto-strong-callgraph` in the flux repo
+  (driver `3450fb82` + Ranjit's `dump-callgraph` + a local fix for empty call
+  graph dumps on cyclic graphs). See `~/Desktop/Code/flux/callgraph-dump-issues.md`.
+- Running flux needs the sandbox off when `FLUXFLAGS` changes: the flux deps
+  rebuild and flux writes a tempdir into their `~/.cargo` checkout.
