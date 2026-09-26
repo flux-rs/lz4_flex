@@ -156,6 +156,29 @@ same impossible obligation to the caller.
   source comment says is intentional.
 - Trivially safe by inspection: the `vec!` has exactly `N` elements.
 
+## function uid 132 — block::compress::compress_into_vec_with_dict (src/block/compress.rs) — blocked on flux ICE 1
+
+- Error: `unwrap` precondition on `compress_into_sink_with_dict(..).unwrap()` (line ~705).
+- Root cause: the `unwrap` is safe because the `Vec` has `get_maximum_output_size`
+  capacity, so `compress_internal` never returns `OutputTooSmall`. But
+  `compress_internal` is `trusted` (flux ICE 1, `checker.rs:2660`), so its result
+  is unrefined and nothing links capacity to success.
+- Fix path: fix ICE 1, verify `compress_internal`, and give it
+  `ensures ... Result[cap - pos >= get_maximum_output_size(len)]`.
+
+## function uids 79, 81 — block::decompress::decompress_into{_with_dict} — flux internal error
+
+- Error: `internal flux error: crates/flux-infer/src/infer.rs:887:22`,
+  `incompatible types: SliceSink { output: .., pos: usize[0] } - SliceSink<'_>[?]`
+  on `decompress_internal::<_, _>(input, &mut SliceSink::new(output, 0), ..)`.
+- Root cause: flux bug. A value from a constructor whose spec returns an indexed
+  type (`SliceSink::new -> SliceSink[pos, n]`), lent to a generic `&strg S`
+  parameter, fails to unify. Minimal snippet: issue 4 in
+  `~/Desktop/Code/flux/flux-ice-issues.md`.
+- Tried: binding the sink to a local first (same error). Not tried: dropping
+  `new`'s indexed return spec, which would lose the `pos <= cap` guarantee that
+  `SliceSink`'s invariant relies on.
+
 ## Disjointness-assumption sites (`copy_nonoverlapping` across different allocations)
 
 Each of these functions verifies except for `nonoverlapping(src_p, dst_p, n)` on

@@ -68,3 +68,23 @@ Crate-wide errors after Phase 1: 306 (baseline 357).
 - uid 71 `decompress_internal`: the per-def check takes ~90-150s, past
   `run_flux.py`'s 30s `CHECK_TIMEOUT`, so it was run with `cargo flux
   --only-check=def:...` directly.
+
+## Phase 2 result (2026-09-26)
+
+Crate-wide: **357 → 29 errors, 0 ICEs** (with `compress_internal` and the
+`frame` `Read` impl still `trusted` for flux ICEs 1 and 2). Every remaining
+error is logged in `ABORT.md`:
+
+| category | errors | functions |
+|---|---:|---|
+| different-base `copy_nonoverlapping` / `disjoint` (the documented assumption) | 13 | `PtrSink::extend_from_slice_wild`, `push_u16`, `copy_literals_wild` (4), `read_u16/u32/usize_ptr`, `copy_from_dict`, `read_match_offset`, `decompress_internal` (2) |
+| **real bug** (out-of-bounds `ptr::add`) | 1 | `duplicate_overlapping`; test in `tests/duplicate_overlapping_ub.rs` |
+| flux-alloc gaps (`Vec` capacity, `vec!` → `Box<[T; N]>`) | 7 | `PtrSink::from_vec` (4), `HashTable*::new` (3) |
+| loop invariant flux can't express (const-generic modulus; generic assoc `pos`) | 5 | `fastcpy_unsafe::wild_copy_from_src` (4), `handle_last_literals` (via `write_integer`) |
+| blocked on a flux bug | 3 | `compress_into_vec_with_dict` (ICE 1), `decompress_into{,_with_dict}` (issue 4, `infer.rs:887`) |
+
+Functions verified with no assumptions include the whole decompression path's
+bounds reasoning (`decompress_internal` apart from its 2 input/output copies,
+`duplicate`, `wild_copy_from_src_16`, `copy_from_dict`'s bounds, the input
+readers), both sinks, both `slice_copy`s, the compression helpers'
+bounds, the hash tables' indexing, and `uncompressed_size`.
