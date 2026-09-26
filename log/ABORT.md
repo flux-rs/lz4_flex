@@ -83,6 +83,27 @@ The token `push_byte` and the `write_integer` call verify. The final
 precondition, because uid 9 can't say how far `write_integer` advanced `pos`.
 Fixing uid 9's postcondition should fix this with no further change.
 
+## function uids 55/56 — fastcpy_unsafe::wild_copy_from_src (src/fastcpy_unsafe.rs:64)
+
+Spec kept (callers are checked against it): `requires 0 < SIZE && SIZE <= num_bytes
+&& readable(source, num_bytes) && writable(dst, num_bytes) && disjoint(source, dst)`.
+
+- Errors: `valid` / `nonoverlapping` on the in-loop `copy_nonoverlapping(source, dst, SIZE)`,
+  and `count <= p.size` on both `.add(SIZE)`.
+- Root cause: the loop runs while `dst < dst_ptr_end`, where
+  `dst_ptr_end = dst0 + (num_bytes / SIZE) * SIZE`. It's safe only because
+  `dst - dst0` stays a multiple of `SIZE`, so `dst < end` implies
+  `dst + SIZE <= end`. With `SIZE` a const generic, that's modular/nonlinear
+  arithmetic over a symbolic value, and no qualifier can mention `SIZE`. (The
+  only instantiation is `SIZE = 16`, but flux checks the generic body once.)
+- Strategies tried:
+  1. Precondition: already as strong as the contract allows.
+  2. `refined_by`: no struct involved.
+  3. Loop qualifiers `LeSum`/`Pos`/`CoversSum`: carry the lockstep bounds but
+     not the `% SIZE` fact.
+- Possible fixes: rewrite the exit test to `dst.add(SIZE) > dst_ptr_end`
+  (equivalent, but changes the hot loop), or monomorphize to `16`.
+
 ## Disjointness-assumption sites (`copy_nonoverlapping` across different allocations)
 
 Each of these functions verifies except for `nonoverlapping(src_p, dst_p, n)` on

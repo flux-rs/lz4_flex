@@ -18,6 +18,10 @@
 //!
 
 #[inline]
+#[flux_rs::spec(fn(src: *const[@s] u8, dst: *mut[@d] u8, num_bytes: usize)
+                requires 1 <= num_bytes
+                      && crate::flux_specs::readable(s, num_bytes) && crate::flux_specs::writable(d, num_bytes)
+                      && crate::flux_specs::disjoint(s, d))]
 pub(crate) fn slice_copy(src: *const u8, dst: *mut u8, num_bytes: usize) {
     if num_bytes < 4 {
         short_copy(src, dst, num_bytes);
@@ -61,6 +65,11 @@ pub(crate) fn slice_copy(src: *const u8, dst: *mut u8, num_bytes: usize) {
 
 // Inline never because otherwise we get a call to memcpy -.-
 #[inline]
+#[flux_rs::spec(fn(source: *const[@s] u8, dst: *mut[@d] u8, num_bytes: usize)
+                requires 0 < SIZE && SIZE <= num_bytes
+                      && crate::flux_specs::readable(s, num_bytes) && crate::flux_specs::writable(d, num_bytes)
+                      && crate::flux_specs::disjoint(s, d))]
+#[flux_rs::qualifiers(LeSum, Pos, CoversSum)]
 fn wild_copy_from_src<const SIZE: usize>(
     mut source: *const u8,
     mut dst: *mut u8,
