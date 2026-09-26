@@ -34,6 +34,7 @@ const INCREASE_STEPSIZE_BITSHIFT: usize = 5;
 /// This will read a native-endian 4-byte integer from some position.
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::spec(fn(input: &[u8][@len], n: usize{n + 4 <= len}) -> _)]
 pub(super) fn get_batch(input: &[u8], n: usize) -> u32 {
     unsafe { read_u32_ptr(input.as_ptr().add(n)) }
 }
@@ -50,6 +51,7 @@ pub(super) fn get_batch(input: &[u8], n: usize) -> u32 {
 #[inline]
 #[allow(dead_code)]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::spec(fn(input: &[u8][@len], n: usize{n + 8 <= len}) -> _)]
 pub(super) fn get_batch_arch(input: &[u8], n: usize) -> usize {
     unsafe { read_usize_ptr(input.as_ptr().add(n)) }
 }
