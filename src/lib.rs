@@ -88,6 +88,9 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(feature = "nightly", feature(optimize_attribute))]
+// CENTRIFUGE: flux injects `#![feature(custom_inner_attributes)]`; when the crate
+// has no other errors, `deny(warnings)` turns the unused-feature lint into one.
+#![cfg_attr(flux, allow(unused_features))]
 
 #[cfg(feature = "alloc")]
 #[cfg_attr(test, macro_use)]

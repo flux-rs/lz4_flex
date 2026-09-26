@@ -42,14 +42,18 @@ pub(crate) fn vec_sink_for_decompression(
     }
 }
 
+#[flux_rs::assoc(fn pos(me: Self) -> int)]
+#[flux_rs::assoc(fn cap(me: Self) -> int)]
 pub(crate) trait Sink {
     /// Returns a raw ptr to the first unfilled byte of the Sink. Analogous to `[pos..].as_ptr()`.
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
     #[allow(dead_code)]
+    #[flux_rs::spec(fn(&mut Self[@s]) -> {b: int. *mut[b, b + Self::pos(s), Self::cap(s) - Self::pos(s)] u8 | 0 < b && Self::pos(s) <= Self::cap(s)})]
     unsafe fn pos_mut_ptr(&mut self) -> *mut u8;
 
     /// read byte at position
     #[allow(dead_code)]
+    #[flux_rs::spec(fn(&mut Self[@s], pos: usize{pos < Self::cap(s)}) -> u8)]
     fn byte_at(&mut self, pos: usize) -> u8;
 
     /// Pushes a byte to the end of the Sink.
@@ -57,21 +61,32 @@ pub(crate) trait Sink {
     fn push(&mut self, byte: u8);
 
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
+    #[flux_rs::spec(fn(&mut Self[@s]) -> {b: int. *mut[b, b, Self::cap(s)] u8 | 0 < b && Self::pos(s) <= Self::cap(s)})]
     unsafe fn base_mut_ptr(&mut self) -> *mut u8;
 
+    #[flux_rs::spec(fn(&Self[@s]) -> usize{v: v == Self::pos(s) && v <= Self::cap(s)})]
     fn pos(&self) -> usize;
 
+    #[flux_rs::spec(fn(&Self[@s]) -> usize{v: v == Self::cap(s) && Self::pos(s) <= v})]
     fn capacity(&self) -> usize;
 
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
+    #[flux_rs::spec(fn(self: &strg Self[@s], new_pos: usize{new_pos <= Self::cap(s)})
+                    ensures self: Self{v: Self::pos(v) == new_pos && Self::cap(v) == Self::cap(s)})]
     unsafe fn set_pos(&mut self, new_pos: usize);
 
     #[cfg(feature = "safe-decode")]
     fn extend_with_fill(&mut self, byte: u8, len: usize);
 
     /// Extends the Sink with `data`.
+    #[flux_rs::spec(fn(self: &strg Self[@s], data: &[u8][@n])
+                    requires Self::pos(s) + n <= Self::cap(s)
+                    ensures self: Self{v: Self::pos(v) == Self::pos(s) + n && Self::cap(v) == Self::cap(s)})]
     fn extend_from_slice(&mut self, data: &[u8]);
 
+    #[flux_rs::spec(fn(self: &strg Self[@s], data: &[u8][@n], copy_len: usize)
+                    requires Self::pos(s) + n <= Self::cap(s)
+                    ensures self: Self{v: Self::pos(v) == Self::pos(s) + copy_len && Self::cap(v) == Self::cap(s) && copy_len <= n})]
     fn extend_from_slice_wild(&mut self, data: &[u8], copy_len: usize);
 
     /// Copies `len` bytes starting from `start` to the end of the Sink.
@@ -93,10 +108,14 @@ pub(crate) trait Sink {
 ///
 /// # Invariants
 ///   - Bytes `[..pos()]` are always initialized.
+#[flux_rs::refined_by(pos: int, cap: int)]
+#[flux_rs::invariant(pos <= cap)]
 pub(crate) struct SliceSink<'a> {
     /// The working slice, which may contain uninitialized bytes
+    #[field(&mut [u8][cap])]
     output: &'a mut [u8],
     /// Number of bytes in start of `output` guaranteed to be initialized
+    #[field(usize[pos])]
     pos: usize,
 }
 
@@ -106,6 +125,7 @@ impl<'a> SliceSink<'a> {
     /// # Panics
     /// Panics if `pos` is out of bounds.
     #[inline]
+    #[flux_rs::spec(fn(output: &mut [u8][@n], pos: usize{pos <= n}) -> SliceSink[pos, n])]
     pub(crate) fn new(output: &'a mut [u8], pos: usize) -> Self {
         // SAFETY: Caller guarantees that all elements of `output[..pos]` are initialized.
         let _ = &mut output[..pos]; // bounds check pos
@@ -113,16 +133,20 @@ impl<'a> SliceSink<'a> {
     }
 }
 
+#[flux_rs::assoc(fn pos(me: SliceSink) -> int { me.pos })]
+#[flux_rs::assoc(fn cap(me: SliceSink) -> int { me.cap })]
 impl Sink for SliceSink<'_> {
     /// Returns a raw ptr to the first unfilled byte of the Sink. Analogous to `[pos..].as_ptr()`.
     #[inline]
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
+    #[flux_rs::spec(fn(&mut SliceSink[@s]) -> {b: int. *mut[b, b + s.pos, s.cap - s.pos] u8 | 0 < b && s.pos <= s.cap})]
     unsafe fn pos_mut_ptr(&mut self) -> *mut u8 {
         unsafe { self.base_mut_ptr().add(self.pos()) as *mut u8 }
     }
 
     /// Pushes a byte to the end of the Sink.
     #[inline]
+    #[flux_rs::spec(fn(&mut SliceSink[@s], pos: usize{pos < s.cap}) -> u8)]
     fn byte_at(&mut self, pos: usize) -> u8 {
         self.output[pos]
     }
@@ -136,22 +160,27 @@ impl Sink for SliceSink<'_> {
     }
 
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
+    #[flux_rs::spec(fn(&mut SliceSink[@s]) -> {b: int. *mut[b, b, s.cap] u8 | 0 < b && s.pos <= s.cap})]
     unsafe fn base_mut_ptr(&mut self) -> *mut u8 {
         self.output.as_mut_ptr()
     }
 
     #[inline]
+    #[flux_rs::spec(fn(&SliceSink[@s]) -> usize{v: v == s.pos && v <= s.cap})]
     fn pos(&self) -> usize {
         self.pos
     }
 
     #[inline]
+    #[flux_rs::spec(fn(&SliceSink[@s]) -> usize{v: v == s.cap && s.pos <= v})]
     fn capacity(&self) -> usize {
         self.output.len()
     }
 
     #[cfg(not(all(feature = "safe-encode", feature = "safe-decode")))]
     #[inline]
+    #[flux_rs::spec(fn(self: &strg SliceSink[@s], new_pos: usize{new_pos <= s.cap})
+                    ensures self: SliceSink{v: v.pos == new_pos && v.cap == s.cap})]
     unsafe fn set_pos(&mut self, new_pos: usize) {
         debug_assert!(new_pos <= self.capacity());
         self.pos = new_pos;
@@ -166,11 +195,17 @@ impl Sink for SliceSink<'_> {
 
     /// Extends the Sink with `data`.
     #[inline]
+    #[flux_rs::spec(fn(self: &strg SliceSink[@s], data: &[u8][@n])
+                    requires s.pos + n <= s.cap
+                    ensures self: SliceSink{v: v.pos == s.pos + n && v.cap == s.cap})]
     fn extend_from_slice(&mut self, data: &[u8]) {
         self.extend_from_slice_wild(data, data.len())
     }
 
     #[inline]
+    #[flux_rs::spec(fn(self: &strg SliceSink[@s], data: &[u8][@n], copy_len: usize)
+                    requires s.pos + n <= s.cap
+                    ensures self: SliceSink{v: v.pos == s.pos + copy_len && v.cap == s.cap && copy_len <= n})]
     fn extend_from_slice_wild(&mut self, data: &[u8], copy_len: usize) {
         assert!(copy_len <= data.len());
         slice_copy(data, &mut self.output[self.pos..(self.pos) + data.len()]);

@@ -1,0 +1,109 @@
+[
+  {
+    "uid": 0,
+    "path": "sink::SliceSink",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/sink.rs",
+      "start_line": 96,
+      "start_col": 1,
+      "end_line": 96,
+      "end_col": 32
+    },
+    "deps": [],
+    "target": "src/sink.rs:96:1"
+  },
+  {
+    "uid": 1,
+    "path": "sink::PtrSink",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/sink.rs",
+      "start_line": 211,
+      "start_col": 1,
+      "end_line": 211,
+      "end_col": 26
+    },
+    "deps": [],
+    "target": "src/sink.rs:211:1"
+  },
+  {
+    "uid": 2,
+    "path": "block::hashtable::HashTable4KU16",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/block/hashtable.rs",
+      "start_line": 59,
+      "start_col": 1,
+      "end_line": 59,
+      "end_col": 26
+    },
+    "deps": [],
+    "target": "src/block/hashtable.rs:59:1"
+  },
+  {
+    "uid": 3,
+    "path": "block::hashtable::HashTable4K",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/block/hashtable.rs",
+      "start_line": 110,
+      "start_col": 1,
+      "end_line": 110,
+      "end_col": 23
+    },
+    "deps": [],
+    "target": "src/block/hashtable.rs:110:1"
+  },
+  {
+    "uid": 4,
+    "path": "block::hashtable::HashTable8K",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/block/hashtable.rs",
+      "start_line": 165,
+      "start_col": 1,
+      "end_line": 165,
+      "end_col": 30
+    },
+    "deps": [],
+    "target": "src/block/hashtable.rs:165:1"
+  },
+  {
+    "uid": 5,
+    "path": "block::DecompressError",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/block/mod.rs",
+      "start_line": 83,
+      "start_col": 1,
+      "end_line": 83,
+      "end_col": 25
+    },
+    "deps": [],
+    "target": "src/block/mod.rs:83:1"
+  },
+  {
+    "uid": 6,
+    "path": "block::CompressError",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/block/mod.rs",
+      "start_line": 104,
+      "start_col": 1,
+      "end_line": 104,
+      "end_col": 23
+    },
+    "deps": [],
+    "target": "src/block/mod.rs:104:1"
+  },
+  {
+    "uid": 7,
+    "path": "block::compress::CompressTable",
+    "span": {
+      "file": "/Users/kristofergaudel/Desktop/Code/centrifuge/crates/lz4_flex/src/block/compress.rs",
+      "start_line": 745,
+      "start_col": 1,
+      "end_line": 745,
+      "end_col": 23
+    },
+    "deps": [
+      2,
+      3
+    ],
+    "target": "src/block/compress.rs:745:1"
+  }
+]
