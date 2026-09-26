@@ -14,8 +14,11 @@ flux_rs::defs! {
     // sum, so the sums are spelled out. Raw-pointer indices are split into their
     // int fields (base, addr, size) during inference, so these take ints, not `ptr`.
     qualifier LeSum(v: int, a: int, b: int) { v <= a + b }
+    qualifier LtSum(v: int, a: int, b: int) { v < a + b }
     qualifier Pos(x: int) { 0 < x }
     qualifier CoversSum(size: int, v: int, a: int, b: int) { a + b <= size + v }
+    qualifier Lockstep(a: int, b: int, c: int, d: int) { a - b == c - d }
+    qualifier Mod16(x: int, y: int) { (x - y) % 16 == 0 }
 
     // `p` can be written for `n` bytes.
     fn writable(p: ptr, n: int) -> bool { readable(p, n) }
@@ -26,6 +29,9 @@ flux_rs::defs! {
     fn disjoint(p: ptr, q: ptr) -> bool {
         p.addr + p.size <= q.base || q.addr + q.size <= p.base
     }
+
+    // `n` rounded up to a multiple of 16: what a 16-byte wild copy of `n` bytes touches.
+    fn wild16(n: int) -> int { (n + 15) / 16 * 16 }
 
     // Bytes `copy_literals_wild(.., len)` actually copies (it over-copies in 8-byte steps).
     fn wild_len(len: int) -> int {

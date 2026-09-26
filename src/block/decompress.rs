@@ -40,6 +40,12 @@ unsafe fn duplicate(
 }
 
 #[inline]
+#[flux_rs::spec(fn(source: *const[@s] u8, dst_ptr: *mut[@d] u8, num_items: usize)
+                requires 1 <= num_items
+                      && crate::flux_specs::readable(s, crate::flux_specs::wild16(num_items))
+                      && crate::flux_specs::writable(d, crate::flux_specs::wild16(num_items))
+                      && s.addr + 16 <= d.addr)]
+#[flux_rs::qualifiers(Pos, CoversSum, Lockstep, Mod16, LtSum)]
 fn wild_copy_from_src_16(mut source: *const u8, mut dst_ptr: *mut u8, num_items: usize) {
     // Note: if the compiler auto-vectorizes this it'll hurt performance!
     // It's not the case for 16 bytes stepsize, but for 8 bytes.
