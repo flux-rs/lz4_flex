@@ -836,6 +836,7 @@ pub fn compress_into_with_table(
 
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::spec(fn(input: *const[@p] u8) -> _ requires crate::flux_specs::readable(p, 2))]
 fn read_u16_ptr(input: *const u8) -> u16 {
     let mut num: u16 = 0;
     unsafe {
@@ -846,6 +847,7 @@ fn read_u16_ptr(input: *const u8) -> u16 {
 
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::spec(fn(input: *const[@p] u8) -> _ requires crate::flux_specs::readable(p, 4))]
 fn read_u32_ptr(input: *const u8) -> u32 {
     let mut num: u32 = 0;
     unsafe {
@@ -856,6 +858,7 @@ fn read_u32_ptr(input: *const u8) -> u32 {
 
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::spec(fn(input: *const[@p] u8) -> _ requires crate::flux_specs::readable(p, 8))]
 fn read_usize_ptr(input: *const u8) -> usize {
     let mut num: usize = 0;
     unsafe {
