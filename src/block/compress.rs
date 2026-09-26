@@ -542,7 +542,12 @@ fn copy_literals_wild(output: &mut impl Sink, input: &[u8], input_start: usize, 
 
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
-fn copy_literals_wild(output: &mut impl Sink, input: &[u8], input_start: usize, len: usize) {
+// CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
+#[flux_rs::spec(fn(output: &strg S[@s], input: &[u8][@n], input_start: usize, len: usize)
+                requires input_start + crate::flux_specs::wild_len(len) <= n
+                      && <S as Sink>::pos(s) + crate::flux_specs::wild_len(len) <= <S as Sink>::cap(s)
+                ensures output: S{v: <S as Sink>::pos(v) == <S as Sink>::pos(s) + len && <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+fn copy_literals_wild<S: Sink>(output: &mut S, input: &[u8], input_start: usize, len: usize) {
     debug_assert!(input_start + len / 8 * 8 + ((len % 8) != 0) as usize * 8 <= input.len());
     debug_assert!(output.pos() + len / 8 * 8 + ((len % 8) != 0) as usize * 8 <= output.capacity());
     unsafe {

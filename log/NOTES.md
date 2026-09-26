@@ -27,3 +27,11 @@ Crate-wide errors after Phase 1: 306 (baseline 357).
   graph dumps on cyclic graphs). See `~/Desktop/Code/flux/callgraph-dump-issues.md`.
 - Running flux needs the sandbox off when `FLUXFLAGS` changes: the flux deps
   rebuild and flux writes a tempdir into their `~/.cargo` checkout.
+
+## Phase 2 observations
+
+- uid 11 `copy_literals_wild`: the `debug_assert!`s bound the copy by
+  `round_up_8(len)`, which is 0 when `len == 0`, but that arm copies 8 bytes.
+  The spec uses the true amount (`wild_len` in `src/flux_specs.rs`). Whether
+  `compress_internal` ever calls it with `len == 0` near the end of the input is
+  unchecked, because `compress_internal` is `trusted` (flux ICE).

@@ -87,3 +87,4 @@ One entry per function; the justification is why the regions can't overlap.
 |---|---|---|---|
 | 1 (type) | `<PtrSink as Sink>::extend_from_slice_wild` | caller slice → sink buffer | only caller copies input into a fresh `Vec` |
 | 10 | `block::compress::push_u16` | `el.to_le_bytes()` → sink | source is a fresh stack temporary |
+| 11 | `block::compress::copy_literals_wild` | input → sink (4 copies, one per `match` arm) | `input: &[u8]` vs the output buffer |
