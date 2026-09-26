@@ -77,6 +77,7 @@ pub(crate) fn slice_copy(src: &[u8], dst: &mut [u8]) {
 }
 
 #[inline(always)]
+#[flux_rs::spec(fn(src: &[u8][@n], dst: &mut [u8][n]) requires 1 <= n)]
 fn short_copy(src: &[u8], dst: &mut [u8]) {
     let len = src.len();
 
@@ -91,6 +92,7 @@ fn short_copy(src: &[u8], dst: &mut [u8]) {
 /// [1, 2, 3, 4, 5, 6]
 /// [1, 2, 3, 4]
 ///       [3, 4, 5, 6]
+#[flux_rs::spec(fn(src: &[u8][@n], dst: &mut [u8][n]) requires 0 <= SIZE && SIZE <= n)]
 fn double_copy_trick<const SIZE: usize>(src: &[u8], dst: &mut [u8]) {
     dst[0..SIZE].copy_from_slice(&src[0..SIZE]);
     dst[src.len() - SIZE..].copy_from_slice(&src[src.len() - SIZE..]);
