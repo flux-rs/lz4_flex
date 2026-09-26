@@ -280,6 +280,9 @@ fn backtrack_match(
 /// Moves the cursors back as long as the bytes match, to find additional bytes in a duplicate
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::spec(fn(input: &[u8][@n], cur: &strg usize[@c], literal_start: usize, source: &[u8][@m], candidate: &strg usize[@k])
+                requires c <= n && k <= m
+                ensures cur: usize{v: v <= c}, candidate: usize{v: v <= k})]
 fn backtrack_match(
     input: &[u8],
     cur: &mut usize,
