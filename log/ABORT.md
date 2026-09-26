@@ -45,3 +45,32 @@ All `PtrSink` methods verify against the invariant except the two sites below.
 `extend_from_slice_wild`'s `valid(dst)` was first unprovable because nothing said
 `pos >= 0` (`pos` is an `int` index). Fixed by adding `0 <= pos` to both sink
 invariants and the `Sink` trait's promises; no source change was needed.
+
+## function uid 9 — block::compress::write_integer (src/block/compress.rs:226) — PARTIAL
+
+Verified: every `push_byte` is in bounds, under
+`requires pos(s) + bytes_for_int(n) <= cap(s)` (`bytes_for_int(n) = n / 255 + 1`,
+in `src/flux_specs.rs`), and `cap` is preserved.
+
+Not verified: an upper bound on `pos` afterwards
+(`pos(v) == pos(s) + bytes_for_int(n)`), which callers need to know how much
+room is left.
+
+- Error: `a postcondition cannot be proved` on the `pos(v)` conjunct.
+- Root cause: the loop invariant `pos(cur) + n_cur / 255 == pos(s) + n / 255`
+  relates the generic sink's assoc refinement `<S as Sink>::pos` at two points
+  in time. Flux has to infer it, and its qualifiers can't mention assoc
+  refinements of a generic `S`.
+- Strategies tried:
+  1. Plain spec: every conjunct about `output` failed after the loop, including
+     `cap(v) == cap(s)`.
+  2. `#[flux_rs::opts(scrape_quals = true)]`: recovers the precondition-shaped
+     invariant `pos(cur) + bytes_for_int(n_cur) <= cap(s)` and `cap` preservation,
+     but not the `pos` relation.
+  3. Reshaping the ensures so a scraped atom matches the invariant, including
+     planting the exact atom as a tautological `requires` conjunct: no effect.
+  4. A caller-chosen slack (`requires pos + bytes_for_int(n) + k <= cap ensures
+     pos' + k <= cap`) needs a refinement parameter bound by no argument; not
+     expressible.
+- Possible fixes: a loop-invariant annotation in flux; or rewrite the loop so the
+  count is computed first. Left as-is because the loop is the hot path's idiom.

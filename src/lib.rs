@@ -105,6 +105,7 @@ extern crate flux_core;
 #[cfg(feature = "alloc")]
 #[allow(unused_extern_crates)]
 extern crate flux_alloc;
+mod flux_specs;
 
 #[cfg(test)]
 #[macro_use]

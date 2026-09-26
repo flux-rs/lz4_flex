@@ -223,7 +223,12 @@ fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usi
 /// to produce a total length. When the byte value is 255, another byte must read and added, and so
 /// on. There can be any number of bytes of value "255" following token
 #[inline]
-pub(super) fn write_integer(output: &mut impl Sink, mut n: usize) {
+// CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
+#[flux_rs::spec(fn(output: &strg S[@s], n: usize)
+                requires <S as Sink>::pos(s) + crate::flux_specs::bytes_for_int(n) <= <S as Sink>::cap(s)
+                ensures output: S{v: <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+#[flux_rs::opts(scrape_quals = true)]
+pub(super) fn write_integer<S: Sink>(output: &mut S, mut n: usize) {
     // Note: Since `n` is usually < 0xFF and writing multiple bytes to the output
     // requires 2 branches of bound check (due to the possibility of add overflows)
     // the simple byte at a time implementation below is faster in most cases.
