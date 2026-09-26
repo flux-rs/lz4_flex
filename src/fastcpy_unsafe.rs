@@ -90,6 +90,8 @@ fn wild_copy_from_src<const SIZE: usize>(
 }
 
 #[inline]
+#[flux_rs::spec(fn(src: *const[@s] u8, dst: *mut[@d] u8, len: usize)
+                requires 1 <= len && crate::flux_specs::readable(s, len) && crate::flux_specs::writable(d, len) && crate::flux_specs::disjoint(s, d))]
 fn short_copy(src: *const u8, dst: *mut u8, len: usize) {
     unsafe {
         *dst = *src;
@@ -103,6 +105,8 @@ fn short_copy(src: *const u8, dst: *mut u8, len: usize) {
 /// [1, 2, 3, 4, 5, 6]
 /// [1, 2, 3, 4]
 ///       [3, 4, 5, 6]
+#[flux_rs::spec(fn(src: *const[@s] u8, dst: *mut[@d] u8, len: usize)
+                requires 0 <= SIZE && SIZE <= len && crate::flux_specs::readable(s, len) && crate::flux_specs::writable(d, len) && crate::flux_specs::disjoint(s, d))]
 fn double_copy_trick<const SIZE: usize>(src: *const u8, dst: *mut u8, len: usize) {
     let l_end = unsafe { src.add(len - SIZE) };
     let r_end = unsafe { dst.add(len - SIZE) };
