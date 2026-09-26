@@ -58,6 +58,88 @@ with `refined_by(pos, cap)` + `invariant(pos <= cap)` should cascade widely.
 `hashtable.rs` is 9 errors of a single shape (`self.dict[hash >> SHIFT]` into a
 fixed-size array, × 3 table types × get/put).
 
+## `copy_nonoverlapping`: same base vs different base
+
+Question from review: do the `copy_nonoverlapping` calls use pointers from the
+**same** base (offset reasoning, good) or **different** bases (needs a
+non-overlap assumption, bad)?
+
+flux-core's `nonoverlapping(p, q, n)` compares `addr` only
+(`p.addr + n <= q.addr || q.addr + n <= p.addr`). Every fresh pointer
+(`slice.as_ptr()`, `&mut local as *mut _`) gets an existential `base == addr`
+that is unrelated to every other pointer. So a different-base call can **never**
+discharge `nonoverlapping` without an assumption. All 17 live sites currently
+fail that conjunct (the 18th `copy_nonoverlapping` is commented out at
+`fastcpy_unsafe.rs:58`).
+
+| site | src → dst | base | why disjoint |
+|---|---|---|---|
+| `decompress.rs:49` `wild_copy_from_src_16` | `output - offset` → `output` | **same** | guarded by `output_ptr.offset_from(start) >= match_length + 15` (≥ 19 > 16) |
+| `decompress.rs:286` | input → output | different | `&[u8]` vs `&mut [u8]` / fresh `Vec` |
+| `decompress.rs:110` `copy_from_dict` | ext_dict → output | different | `&[u8]` vs `&mut [u8]` / fresh `Vec` |
+| `fastcpy_unsafe.rs:78, 88, 111, 112` | input → output (only caller: `decompress.rs:367`) | different | same |
+| `compress.rs:541–544` `copy_literals_wild` | input → output | different | `&[u8]` vs `&mut [u8]` / fresh `Vec` |
+| `sink.rs:312` `PtrSink::extend_from_slice_wild` | input → fresh `Vec` | different | fresh allocation |
+| `decompress.rs:173`, `compress.rs:824, 834, 844` | input → `&mut num` (stack local) | different | fresh stack slot |
+| `compress.rs:519` `push_u16` | `to_le_bytes()` temporary → output | different | fresh stack slot |
+
+**1 same-base, 16 different-base.** The 4 `core::ptr::copy` calls (all same-base,
+self-referential match copies) carry no non-overlap obligation. The 15
+`offset_from` obligations are all same-base in reality: output-vs-output. Two of
+them fail anyway, for the reason in (b) below.
+
+The different-base sites never rely on the allocator placing things "far
+enough" apart. `valid(src, n)` and `valid(dst, n)` already confine each access
+to its own allocation, so **disjoint allocations are sufficient**. That is
+guaranteed by the language (a live `&[u8]` and `&mut [u8]` never alias; a fresh
+`Vec` or stack slot is disjoint from every live allocation).
+
+So Evan's formulation works. Verified in a probe crate against the same driver:
+
+- Same-base with offsets (`copy_nonoverlapping(p, p.add(16), 16)` with `len >= 32`)
+  **verifies with no annotations**.
+- A precondition stating region disjointness, where region(p) = `[p.base, p.addr + p.size)`:
+  ```
+  requires valid(s, n) && valid(d, n) &&
+           (s.addr + s.size <= d.base || d.addr + d.size <= s.base)
+  ```
+  **discharges `nonoverlapping`**, and it **survives `.add(k)`** because `.add`
+  preserves `base` and `addr + size`. (It also needed `base > 0` to keep
+  `addr != 0` after the add. `as_ptr` provides that.)
+- Discharging it at an entry point takes one `#[trusted]` helper that returns
+  `(i.as_ptr(), o.as_mut_ptr())` with the disjointness postcondition. That
+  verifies too.
+
+One caveat on phrasing it as `base1 != base2 -> disjoint`: in flux's model,
+`base` is "the start of whatever slice `as_ptr` was called on", **not** the
+allocation. `v.as_ptr()` and `v[2..].as_ptr()` get different bases but overlap.
+Stated literally on `base`, the axiom is unsound. It also never fires, because
+existential bases can never be proven unequal. State the assumption on
+**regions**, at the point where Rust's aliasing rules justify it.
+
+**Plan:** thread a disjointness precondition from the public API down to the 16
+sites, and assume it once per public entry point (~5 in `decompress.rs`, ~6 in
+`compress.rs`), plus the 4 stack-local helpers, which can be assumed locally.
+That puts the documented assumption in roughly 15 places, each justified by
+"`&T`/`&mut T` don't alias" or "fresh allocation", instead of an assume at
+every copy.
+
+### Two further gaps from the same probe (not about overlap, but they block `decompress_internal`)
+
+(a) **`ptr as usize` is opaque.** `PointerExposeProvenance` casts produce an
+unrefined `usize`, so the input-side bounds checks at `decompress.rs:269, 292,
+355, 382` (`input_ptr_end as usize - input_ptr as usize`) tell flux nothing.
+Pointer comparison (`p < end`) *is* tracked. The fix is a small source rewrite
+to `input_ptr_end.offset_from(input_ptr)`, or a pointer comparison.
+
+(b) **Two `as_ptr()` calls on the same slice get unrelated bases.**
+`decompress.rs:232/233` (`input_ptr` vs `input_ptr_end`) and `227/229`
+(`output_base` vs `output_start_pos_ptr`) each call `as_ptr`/`base_mut_ptr`
+twice. flux cannot prove the results share a base, which breaks `offset_from`
+(`:456`) and every `input_ptr >= input_ptr_end` check. The fix is to derive the
+second pointer from the first with `.add`, or to refine `Sink` so that
+`base_mut_ptr` returns a pointer indexed by the sink.
+
 ## Two configurations
 
 (LOC below = source actually compiled in that configuration, not the
