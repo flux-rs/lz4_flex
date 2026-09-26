@@ -61,3 +61,9 @@ Crate-wide errors after Phase 1: 306 (baseline 357).
 | `src/lib.rs` | `cfg_attr(flux, allow(unused_features))`; `mod flux_specs` | flux-injected feature vs `deny(warnings)`; spec defs |
 | `block/compress.rs` `push_byte`, `push_u16`, `write_integer`, `copy_literals_wild`, `handle_last_literals` | `output: &mut impl Sink` → `<S: Sink>(output: &mut S)` | specs must name `S` to use `S::pos`/`S::cap` |
 | `block/mod.rs` `uncompressed_size` | explicit length check instead of `try_into::<&[u8; 4]>().unwrap()` | see uid 61 above |
+| `block/decompress.rs` `decompress_internal` | `input_ptr_end` / `output_start_pos_ptr` derived from the first `as_ptr()` / `base_mut_ptr()` instead of a second call | fresh `as_ptr()` results get unrelated bases in flux |
+| `block/decompress.rs` `decompress_internal` | `ptr as usize` comparisons/differences → pointer `<=` / `offset_from` | `ptr as usize` is an unrefined integer in flux |
+| `block/decompress.rs` `decompress_internal`, `does_token_fit` | `token >> 4` → `token / 16`, `token & 0xF` → `token % 16`, masks in `does_token_fit` likewise; `does_token_fit` checked in `strict` overflow mode | flux doesn't model `>>`/`&`; `strict` supplies `u8 <= 255`. This was the key to uid 71: unbounded token fields broke every loop invariant (64 → 2 errors) |
+- uid 71 `decompress_internal`: the per-def check takes ~90-150s, past
+  `run_flux.py`'s 30s `CHECK_TIMEOUT`, so it was run with `cargo flux
+  --only-check=def:...` directly.

@@ -158,3 +158,4 @@ One entry per function; the justification is why the regions can't overlap.
 | 15 | `block::compress::read_usize_ptr` | input → `&mut num` | destination is a fresh stack local (spec says 8 bytes: 64-bit target) |
 | 67 | `block::decompress::copy_from_dict` | `ext_dict` → output | `ext_dict: &[u8]` vs the output buffer (`&mut [u8]` or a fresh `Vec`) |
 | 69 | `block::decompress::read_match_offset` | input → `&mut num` | destination is a fresh stack local |
+| 71 (+77, 80, 82: same def, other instantiations) | `block::decompress::decompress_internal` | input → output: hot-path `copy_nonoverlapping(input_ptr, output_ptr, 16)` and `slice_copy`'s `disjoint(input, output)` precondition | `input: &[u8]` vs the sink's buffer (`&mut [u8]` or a fresh `Vec`). This is the one place the decoder needs the assumption; `fastcpy_unsafe` proves non-overlap *from* it. |
