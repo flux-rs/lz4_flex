@@ -156,3 +156,4 @@ One entry per function; the justification is why the regions can't overlap.
 | 13 | `block::compress::read_u16_ptr` | input → `&mut num` | destination is a fresh stack local |
 | 14 | `block::compress::read_u32_ptr` | input → `&mut num` | destination is a fresh stack local |
 | 15 | `block::compress::read_usize_ptr` | input → `&mut num` | destination is a fresh stack local (spec says 8 bytes: 64-bit target) |
+| 67 | `block::decompress::copy_from_dict` | `ext_dict` → output | `ext_dict: &[u8]` vs the output buffer (`&mut [u8]` or a fresh `Vec`) |

@@ -30,6 +30,13 @@ flux_rs::defs! {
         p.addr + p.size <= q.base || q.addr + q.size <= p.base
     }
 
+    fn min(a: int, b: int) -> int { if a <= b { a } else { b } }
+
+    // Bytes `copy_from_dict` copies: the match, cut off at the end of the dictionary.
+    fn dict_copied(match_length: int, offset: int, out_len: int) -> int {
+        min(match_length, offset - out_len)
+    }
+
     // `n` rounded up to a multiple of 16: what a 16-byte wild copy of `n` bytes touches.
     fn wild16(n: int) -> int { (n + 15) / 16 * 16 }
 

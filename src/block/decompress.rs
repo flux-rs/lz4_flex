@@ -106,6 +106,15 @@ unsafe fn duplicate_overlapping(
 }
 
 #[inline]
+#[flux_rs::spec(fn(output_base: *mut[@b] u8, output_ptr: &strg *mut[@o] u8, ext_dict: &[u8][@n], offset: usize, match_length: usize)
+                -> usize[crate::flux_specs::dict_copied(match_length, offset, o.addr - b.addr)]
+                requires 0 < b.base && o.base == b.base && b.addr == b.base && b.addr <= o.addr
+                      && b.addr + b.size == o.addr + o.size && 0 <= o.size
+                      && o.addr - b.addr < offset && offset <= n + (o.addr - b.addr)
+                      && crate::flux_specs::writable(o, match_length)
+                ensures output_ptr: *mut[o.base,
+                                         o.addr + crate::flux_specs::dict_copied(match_length, offset, o.addr - b.addr),
+                                         o.size - crate::flux_specs::dict_copied(match_length, offset, o.addr - b.addr)] u8)]
 unsafe fn copy_from_dict(
     output_base: *mut u8,
     output_ptr: &mut *mut u8,
