@@ -19,6 +19,10 @@ flux_rs::defs! {
     qualifier CoversSum(size: int, v: int, a: int, b: int) { a + b <= size + v }
     qualifier Lockstep(a: int, b: int, c: int, d: int) { a - b == c - d }
     qualifier Mod16(x: int, y: int) { (x - y) % 16 == 0 }
+    qualifier EqInt(a: int, b: int) { a == b }
+    qualifier LeInt(a: int, b: int) { a <= b }
+    qualifier LtInt(a: int, b: int) { a < b }
+    qualifier SumEq(a: int, b: int, c: int, d: int) { a + b == c + d }
 
     // `p` can be written for `n` bytes.
     fn writable(p: ptr, n: int) -> bool { readable(p, n) }

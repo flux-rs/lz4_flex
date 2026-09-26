@@ -218,6 +218,7 @@ fn read_match_offset(input_ptr: &mut *const u8) -> Result<u16, DecompressError> 
 }
 
 const FIT_TOKEN_MASK_LITERAL: u8 = 0b00001111;
+#[allow(dead_code)] // CENTRIFUGE: no longer used by `does_token_fit`
 const FIT_TOKEN_MASK_MATCH: u8 = 0b11110000;
 
 #[test]
@@ -233,15 +234,23 @@ fn check_token() {
 /// bits) if the literal length and match_length are both below 15, we don't need to read additional
 /// data, so the token does fit the metadata in a single u8.
 #[inline]
+// CENTRIFUGE: was `!((token & FIT_TOKEN_MASK_LITERAL) == FIT_TOKEN_MASK_LITERAL
+// || (token & FIT_TOKEN_MASK_MATCH) == FIT_TOKEN_MASK_MATCH)`. Same value for a u8
+// (`& 0x0F == 0x0F` iff `% 16 == 15`; `& 0xF0 == 0xF0` iff `/ 16 == 15`); flux
+// doesn't model `&`/`>>`. `strict` overflow mode supplies `token <= 255`.
+#[flux_rs::opts(check_overflow = "strict")]
+#[flux_rs::spec(fn(token: u8) -> bool{v: v => (token / 16 < 15 && token % 16 < 15)})]
 fn does_token_fit(token: u8) -> bool {
-    !((token & FIT_TOKEN_MASK_LITERAL) == FIT_TOKEN_MASK_LITERAL
-        || (token & FIT_TOKEN_MASK_MATCH) == FIT_TOKEN_MASK_MATCH)
+    !(token % 16 == FIT_TOKEN_MASK_LITERAL || token / 16 == FIT_TOKEN_MASK_LITERAL)
 }
 
 /// Decompress all bytes of `input` into `output`.
 ///
 /// Returns the number of bytes written (decompressed) into `output`.
 #[inline]
+#[flux_rs::spec(fn(input: &[u8][@n], output: &strg S[@s], ext_dict: &[u8][@m]) -> Result<usize, DecompressError>
+                ensures output: S{v: <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+#[flux_rs::qualifiers(Pos, EqInt, LeInt, LtInt, SumEq, LeSum, LtSum, CoversSum, Lockstep)]
 pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
     input: &[u8],
     output: &mut S,
@@ -261,11 +270,14 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
     };
     let output_base = unsafe { output.base_mut_ptr() };
     let output_end = unsafe { output_base.add(output.capacity()) };
-    let output_start_pos_ptr = unsafe { output.base_mut_ptr().add(output.pos()) as *mut u8 };
+    // CENTRIFUGE: was `output.base_mut_ptr().add(..)`, a second call; derive from `output_base`
+    // so flux knows both pointers share an allocation (same value).
+    let output_start_pos_ptr = unsafe { output_base.add(output.pos()) as *mut u8 };
     let mut output_ptr = output_start_pos_ptr;
 
     let mut input_ptr = input.as_ptr();
-    let input_ptr_end = unsafe { input.as_ptr().add(input.len()) };
+    // CENTRIFUGE: was `input.as_ptr().add(..)`, a second call; derive from `input_ptr` (same value).
+    let input_ptr_end = unsafe { input_ptr.add(input.len()) };
     let safe_distance_from_end =  (16 /* literal copy */ +  2 /* u16 match offset */ + 1 /* The next token to read (we can skip the check) */).min(input.len()) ;
     let input_ptr_safe = unsafe { input_ptr_end.sub(safe_distance_from_end) };
 
@@ -301,11 +313,13 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
         // that doesn't work when the safe_output_ptr is == output_ptr due to insufficient
         // capacity. So we use `<` instead of `<=`, which covers that case.
         if does_token_fit(token)
-            && (input_ptr as usize) <= input_ptr_safe as usize
+            // CENTRIFUGE: was `(input_ptr as usize) <= input_ptr_safe as usize` (same comparison).
+            && input_ptr <= input_ptr_safe
             && output_ptr < safe_output_ptr
         {
-            let literal_length = (token >> 4) as usize;
-            let mut match_length = MINMATCH + (token & 0xF) as usize;
+            // CENTRIFUGE: `/ 16` and `% 16` were `>> 4` and `& 0xF` (same values for a u8).
+            let literal_length = (token / 16) as usize;
+            let mut match_length = MINMATCH + (token % 16) as usize;
 
             // output_ptr <= safe_output_ptr should guarantee we have enough space in output
             debug_assert!(
@@ -324,7 +338,8 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
             }
 
             // input_ptr <= input_ptr_safe should guarantee we have enough space in input
-            debug_assert!(input_ptr_end as usize - input_ptr as usize >= 2);
+            // CENTRIFUGE: was `input_ptr_end as usize - input_ptr as usize >= 2` (same value).
+            debug_assert!(unsafe { input_ptr_end.offset_from(input_ptr) } >= 2);
             let offset = read_match_offset(&mut input_ptr)? as usize;
 
             let output_len = unsafe { output_ptr.offset_from(output_base) as usize };
@@ -375,7 +390,8 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
         // Literal Section
         // If the initial value is 15, it is indicated that another byte will be read and added to
         // it
-        let mut literal_length = (token >> 4) as usize;
+        // CENTRIFUGE: was `(token >> 4)` (same value for a u8).
+        let mut literal_length = (token / 16) as usize;
         if literal_length != 0 {
             if literal_length == 15 {
                 // The literal_length length took the maximal value, indicating that there is more
@@ -387,7 +403,8 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
             {
                 // Check if literal is out of bounds for the input, and if there is enough space on
                 // the output
-                if literal_length > input_ptr_end as usize - input_ptr as usize {
+                // CENTRIFUGE: was `input_ptr_end as usize - input_ptr as usize` (same value).
+                if literal_length > unsafe { input_ptr_end.offset_from(input_ptr) } as usize {
                     return Err(DecompressError::LiteralOutOfBounds);
                 }
                 if literal_length > unsafe { output_end.offset_from(output_ptr) as usize } {
@@ -414,7 +431,8 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
         // Read duplicate section
         // could be skipped with unchecked-decode
         {
-            if (input_ptr_end as usize) - (input_ptr as usize) < 2 {
+            // CENTRIFUGE: was `(input_ptr_end as usize) - (input_ptr as usize) < 2` (same value).
+            if unsafe { input_ptr_end.offset_from(input_ptr) } < 2 {
                 return Err(DecompressError::ExpectedAnotherByte);
             }
         }
@@ -427,7 +445,8 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
 
         // The initial match length can maximally be 19 (MINMATCH + 15). As with the literal length,
         // this indicates that there are more bytes to read.
-        let mut match_length = MINMATCH + (token & 0xF) as usize;
+        // CENTRIFUGE: was `(token & 0xF)` (same value for a u8).
+        let mut match_length = MINMATCH + (token % 16) as usize;
         if match_length == MINMATCH + 15 {
             // The match length took the maximal value, indicating that there is more bytes. We
             // read the extra integer.
