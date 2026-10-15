@@ -108,7 +108,7 @@ fn token_from_literal_and_match_length(lit_len: usize, duplicate_length: usize) 
 /// The function ignores the last END_OFFSET bytes in input as those should be literals.
 #[inline]
 #[cfg(feature = "safe-encode")]
-#[flux_rs::qualifiers(crate::flux_specs::LeSum, crate::flux_specs::Pos, crate::flux_specs::CoversSum)]
+#[flux_rs::qualifiers(LeSum, Pos, CoversSum)]
 fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usize) -> usize {
     const USIZE_SIZE: usize = core::mem::size_of::<usize>();
     let cur_slice = &input[*cur..input.len() - END_OFFSET];
@@ -149,6 +149,20 @@ fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usi
     num
 }
 
+/// CENTRIFUGE: `count_same_bytes`'s `input_end` computation, unchanged, moved
+/// into a helper. Since the 2026-10-15 flux upgrade, a loop bound whose index is
+/// `cur + clamp(..)` (from `saturating_sub`'s spec) no longer reaches the loop
+/// invariant; returning it through this spec gives the loop a plain bounded value.
+#[cfg(not(feature = "safe-encode"))]
+#[inline]
+#[flux_rs::spec(fn(n: usize, c: usize, m: usize, cand: usize{cand <= m}) -> usize{v:
+    c <= v && v - c <= m - cand && (c <= n => v <= n) && (n < c => v == c)})]
+fn match_end(input_len: usize, cur: usize, source_len: usize, candidate: usize) -> usize {
+    let max_input_match = input_len.saturating_sub(cur + END_OFFSET);
+    let max_candidate_match = source_len - candidate;
+    cur + max_input_match.min(max_candidate_match)
+}
+
 /// Counts the number of same bytes in two byte streams.
 /// `input` is the complete input
 /// `cur` is the current position in the input. it will be incremented by the number of matched
@@ -158,14 +172,13 @@ fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usi
 /// The function ignores the last END_OFFSET bytes in input as those should be literals.
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
+#[flux_rs::qualifiers(Pos, SizeCovers)]
 #[flux_rs::spec(fn(input: &[u8][@n], cur: &strg usize[@c], source: &[u8][@m], candidate: usize) -> usize
                 requires candidate <= m
                 ensures cur: usize{v: c <= v && (c <= n => v <= n)})]
 fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usize) -> usize {
-    let max_input_match = input.len().saturating_sub(*cur + END_OFFSET);
-    let max_candidate_match = source.len() - candidate;
     // Considering both limits calc how far we may match in input.
-    let input_end = *cur + max_input_match.min(max_candidate_match);
+    let input_end = match_end(input.len(), *cur, source.len(), candidate);
 
     let start = *cur;
     let mut source_ptr = unsafe { source.as_ptr().add(candidate) };

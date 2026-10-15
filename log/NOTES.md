@@ -136,3 +136,23 @@ All 29 earlier errors are unchanged. New:
 | 14 | `compress_internal` | newly checked (was `trusted` for ICE 1) | Phase 2: redo uids 22, 108, 109, 123, 125, 127, 128, 150, 151, then 132 |
 | 13 | `count_same_bytes` (uid 16, was DONE) | **regression**: the loop invariant is no longer inferred. Commit `b01d35b` attached the `qualifiers` to the `safe-encode` copy (compiled out, and in a `crate::flux_specs::` path form flux rejects), so the unsafe copy never had them; the old kvar encoding inferred the invariant anyway, the `:self` encoding doesn't. Adding `LeSum, Pos, CoversSum` or the full decompress set to the unsafe copy still leaves 13 errors | Phase 2: redo uid 16 |
 | 1 | `block/mod.rs:78` `static LZ4_64KLIMIT = (64 * 1024) + …` | **new**: `unsupported statement` (`MulWithOverflow`); the driver now checks this initializer | rewrite as `65536 + (MFLIMIT - 1)` or ABORT |
+
+### uid 16 `count_same_bytes` re-verified (2026-10-15): two loop-invariant rules on the new driver
+
+Found by reducing the regression in a scratch crate and running `fixpoint` on the
+dumped constraint (`FLUXFLAGS=-Fdump-constraint`). Removing `:self` doesn't help,
+so it isn't the new encoding as such.
+
+1. **A qualifier's first parameter must be loop-varying.** Fixpoint binds a
+   qualifier's first argument to one of the kvar's own (`:self`) arguments, i.e.
+   the values that change around the loop. `LeSum(v, a, b) { v <= a + b }` with
+   `v = end` (fixed) never instantiates. Put the varying value first:
+   `SizeCovers(size, cur, end) { end <= cur + size }` (`src/flux_specs.rs`).
+2. **A loop bound must be a named value, not an expression.** `input_end = *cur +
+   a.saturating_sub(b).min(c)` is indexed by `c + clamp(..)`, which isn't a kvar
+   argument, so no invariant can mention it. Fix: compute it in a helper whose
+   spec returns a fresh `usize{v: ..}` (`match_end`, a CENTRIFUGE change; same
+   computation).
+
+The old driver hid both (its `KVarEncoding::Conj` gave every argument its own
+kvar). Expect the same in `compress_internal`'s loops.

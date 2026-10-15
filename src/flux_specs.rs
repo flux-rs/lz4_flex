@@ -23,6 +23,11 @@ flux_rs::defs! {
     qualifier LeInt(a: int, b: int) { a <= b }
     qualifier LtInt(a: int, b: int) { a < b }
     qualifier SumEq(a: int, b: int, c: int, d: int) { a + b == c + d }
+    // A pointer's remaining `size` covers the rest of the loop: `end <= cur + size`.
+    // Since the 2026-10-15 flux upgrade, a qualifier's first parameter must be a
+    // loop-varying value (here `size`); `LeSum(end, cur, size)` never instantiates
+    // because `end` is fixed.
+    qualifier SizeCovers(size: int, cur: int, end: int) { end <= cur + size }
 
     // `p` can be written for `n` bytes.
     fn writable(p: ptr, n: int) -> bool { readable(p, n) }
