@@ -156,3 +156,34 @@ so it isn't the new encoding as such.
 
 The old driver hid both (its `KVarEncoding::Conj` gave every argument its own
 kvar). Expect the same in `compress_internal`'s loops.
+
+## Rework after the upgrade (2026-10-15): 57 → 37 errors, 0 ICEs
+
+| item | result |
+|---|---|
+| `LZ4_64KLIMIT` | DONE: `static` → `const` (unused) |
+| uid 16 `count_same_bytes` | DONE: `match_end` helper + `SizeCovers` (see above) |
+| uid 9 `write_integer` | DONE (was PARTIAL): loop-free rewrite (`ptr::write_bytes` for the `0xFF` run), exact `pos` postcondition; `write_integer_matches_loop` test, Miri-clean |
+| uid 20 `handle_last_literals` | DONE (was PARTIAL): follows from uid 9 |
+| `compress_internal` (uids 22, 108, 109, 123, 125, 127, 128, 150, 151) | ABORT, 14 → 9: all input-side bounds verify; 7 output-capacity errors need a generic-sink loop invariant (inexpressible; `qualifier!` crashes flux), 2 ext-dict candidate errors need a hash-table invariant |
+| uid 132 `compress_into_vec_with_dict` | ABORT: `compress_internal`'s `Result` spec verifies but triggers flux issue 4 at a caller, and flux-alloc has no `Vec` capacity |
+
+Other source changes (all `CENTRIFUGE`): `1 << INCREASE_STEPSIZE_BITSHIFT` /
+`>> INCREASE_STEPSIZE_BITSHIFT` → `32` / `/ 32` with a const assert (a shifted
+value in a loop broke an unrelated invariant, flux-ice-issues.md #7);
+`get_maximum_output_size` spec via `flux_specs::max_out`; `backtrack_match` now
+requires `literal_start <= cur` (all callers satisfy it) and keeps it.
+
+The 37 remaining errors, by category (all logged in ABORT.md):
+
+| category | errors |
+|---|---:|
+| different-base `copy_nonoverlapping` / `disjoint` (documented assumption) | 13 |
+| `compress_internal`: generic-sink capacity invariant (7) + hash-table contents (2) | 9 |
+| flux-alloc gaps (`Vec` capacity, `vec!` → `Box<[T; N]>`) | 7 |
+| `fastcpy_unsafe::wild_copy_from_src` const-generic modular invariant | 4 |
+| blocked on flux bugs: issue 4 (`decompress_into{,_with_dict}`), uid 132 | 3 |
+| **real bug** (`duplicate_overlapping`, advisory drafted) | 1 |
+
+Nothing is left to try with the current flux: every remaining error is either a
+documented assumption, a real bug, or blocked on a flux/flux-alloc limitation.

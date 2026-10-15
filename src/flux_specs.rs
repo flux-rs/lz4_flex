@@ -5,6 +5,9 @@ flux_rs::defs! {
     // Bytes `write_integer(n)` emits: one 0xFF per full 255, plus a final byte.
     fn bytes_for_int(n: int) -> int { n / 255 + 1 }
 
+    // `get_maximum_output_size(n)`.
+    fn max_out(n: int) -> int { 20 + n * 110 / 100 }
+
     // `p` can be read for `n` bytes (flux-core's `valid`, which isn't exported).
     fn readable(p: ptr, n: int) -> bool {
         0 < p.base && p.base <= p.addr && 0 <= p.size && n <= p.size

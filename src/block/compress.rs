@@ -28,6 +28,12 @@ use super::{CompressError, WINDOW_SIZE};
 
 /// Increase step size after 1<<INCREASE_STEPSIZE_BITSHIFT non matches
 const INCREASE_STEPSIZE_BITSHIFT: usize = 5;
+// CENTRIFUGE: `compress_internal` uses `32` / `/ 32` instead of
+// `1 << INCREASE_STEPSIZE_BITSHIFT` / `>> INCREASE_STEPSIZE_BITSHIFT` (same values).
+// Flux doesn't model `<<`/`>>`, and on the 2026-10-15 driver a shifted value in
+// the loop stops it inferring unrelated invariants (`literal_start <= cur`).
+// Keep the two in sync:
+const _: () = assert!(1 << INCREASE_STEPSIZE_BITSHIFT == 32);
 
 /// Read a 4-byte "batch" from some position.
 ///
@@ -156,7 +162,8 @@ fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usi
 #[cfg(not(feature = "safe-encode"))]
 #[inline]
 #[flux_rs::spec(fn(n: usize, c: usize, m: usize, cand: usize{cand <= m}) -> usize{v:
-    c <= v && v - c <= m - cand && (c <= n => v <= n) && (n < c => v == c)})]
+    c <= v && v - c <= m - cand && (c <= n => v <= n) && (n < c => v == c)
+    && (c + END_OFFSET <= n => v + END_OFFSET <= n)})]
 fn match_end(input_len: usize, cur: usize, source_len: usize, candidate: usize) -> usize {
     let max_input_match = input_len.saturating_sub(cur + END_OFFSET);
     let max_candidate_match = source_len - candidate;
@@ -175,7 +182,7 @@ fn match_end(input_len: usize, cur: usize, source_len: usize, candidate: usize) 
 #[flux_rs::qualifiers(Pos, SizeCovers)]
 #[flux_rs::spec(fn(input: &[u8][@n], cur: &strg usize[@c], source: &[u8][@m], candidate: usize) -> usize
                 requires candidate <= m
-                ensures cur: usize{v: c <= v && (c <= n => v <= n)})]
+                ensures cur: usize{v: c <= v && (c <= n => v <= n) && (c + END_OFFSET <= n => v + END_OFFSET <= n)})]
 fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usize) -> usize {
     // Considering both limits calc how far we may match in input.
     let input_end = match_end(input.len(), *cur, source.len(), candidate);
@@ -242,12 +249,8 @@ fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usi
 /// to produce a total length. When the byte value is 255, another byte must read and added, and so
 /// on. There can be any number of bytes of value "255" following token
 #[inline]
-// CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
-#[flux_rs::spec(fn(output: &strg S[@s], n: usize)
-                requires <S as Sink>::pos(s) + crate::flux_specs::bytes_for_int(n) <= <S as Sink>::cap(s)
-                ensures output: S{v: <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
-#[flux_rs::opts(scrape_quals = true)]
-pub(super) fn write_integer<S: Sink>(output: &mut S, mut n: usize) {
+#[cfg(feature = "safe-encode")]
+pub(super) fn write_integer(output: &mut impl Sink, mut n: usize) {
     // Note: Since `n` is usually < 0xFF and writing multiple bytes to the output
     // requires 2 branches of bound check (due to the possibility of add overflows)
     // the simple byte at a time implementation below is faster in most cases.
@@ -258,13 +261,42 @@ pub(super) fn write_integer<S: Sink>(output: &mut S, mut n: usize) {
     push_byte(output, n as u8);
 }
 
+/// Write an integer to the output.
+///
+/// CENTRIFUGE: same bytes as the loop above (`n / 255` bytes of `0xFF`, then
+/// `n % 255`), written with one `write_bytes` instead of a loop. A loop over a
+/// generic sink can't carry `<S as Sink>::pos` (qualifiers can't mention a
+/// generic's assoc refinements), so the loop version could only promise that
+/// `cap` is unchanged; this one gives the exact new `pos`. The common case
+/// (`n < 0xFF`) does the same work as before; only `n >= 0xFF` divides.
+#[inline]
+#[cfg(not(feature = "safe-encode"))]
+// CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
+#[flux_rs::spec(fn(output: &strg S[@s], n: usize)
+                requires <S as Sink>::pos(s) + crate::flux_specs::bytes_for_int(n) <= <S as Sink>::cap(s)
+                ensures output: S{v: <S as Sink>::pos(v) == <S as Sink>::pos(s) + crate::flux_specs::bytes_for_int(n)
+                                  && <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+pub(super) fn write_integer<S: Sink>(output: &mut S, n: usize) {
+    if n < 0xFF {
+        // Common case: same work as the loop version (one compare, one push).
+        push_byte(output, n as u8);
+    } else {
+        let count = n / 0xFF;
+        unsafe {
+            core::ptr::write_bytes(output.pos_mut_ptr(), 0xFF, count);
+            output.set_pos(output.pos() + count);
+        }
+        push_byte(output, (n - count * 0xFF) as u8);
+    }
+}
+
 /// Handle the last bytes from the input as literals
 #[cold]
 // CENTRIFUGE: `impl Sink` -> named `S: Sink` so the spec can use `S::pos`/`S::cap`.
 #[flux_rs::spec(fn(output: &strg S[@s], input: &[u8][@n], start: usize)
                 requires start <= n
                       && <S as Sink>::pos(s) + 1 + crate::flux_specs::bytes_for_int(n - start) + (n - start) <= <S as Sink>::cap(s)
-                ensures output: S{v: <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+                ensures output: S{v: <S as Sink>::pos(s) < <S as Sink>::pos(v) && <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
 fn handle_last_literals<S: Sink>(output: &mut S, input: &[u8], start: usize) {
     let lit_len = input.len() - start;
 
@@ -301,8 +333,8 @@ fn backtrack_match(
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
 #[flux_rs::spec(fn(input: &[u8][@n], cur: &strg usize[@c], literal_start: usize, source: &[u8][@m], candidate: &strg usize[@k])
-                requires c <= n && k <= m
-                ensures cur: usize{v: v <= c}, candidate: usize{v: v <= k})]
+                requires c <= n && k <= m && literal_start <= c
+                ensures cur: usize{v: literal_start <= v && v <= c}, candidate: usize{v: v <= k})]
 fn backtrack_match(
     input: &[u8],
     cur: &mut usize,
@@ -398,14 +430,14 @@ pub(crate) fn compress_internal<T: HashTable, const USE_DICT: bool, S: Sink>(
         let mut candidate;
         let mut candidate_source;
         let mut offset;
-        let mut non_match_count = 1 << INCREASE_STEPSIZE_BITSHIFT;
+        let mut non_match_count: usize = 32;
         // The number of bytes before our cursor, where the duplicate starts.
         let mut next_cur = cur;
 
         // In this loop we search for duplicates via the hashtable. 4bytes or 8bytes are hashed and
         // compared.
         loop {
-            step_size = non_match_count >> INCREASE_STEPSIZE_BITSHIFT;
+            step_size = non_match_count / 32;
             non_match_count += 1;
 
             cur = next_cur;
@@ -647,6 +679,7 @@ fn init_dict<T: HashTable>(dict: &mut T, dict_data: &mut &[u8]) {
 /// Returns the maximum output size of the compressed data.
 /// Can be used to preallocate capacity on the output vector
 #[inline]
+#[flux_rs::spec(fn(input_len: usize) -> usize{v: v == crate::flux_specs::max_out(input_len)})]
 pub const fn get_maximum_output_size(input_len: usize) -> usize {
     16 + 4 + (input_len as u64 * 110 / 100) as usize
 }
@@ -900,6 +933,27 @@ fn read_usize_ptr(input: *const u8) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // CENTRIFUGE: `write_integer` (loop-free, for flux) writes exactly the bytes
+    // of the original byte-at-a-time loop.
+    #[test]
+    fn write_integer_matches_loop() {
+        for n in 0..(0xFF * 6 + 3) {
+            let mut expected = Vec::new();
+            let mut m = n;
+            while m >= 0xFF {
+                m -= 0xFF;
+                expected.push(0xFF);
+            }
+            expected.push(m as u8);
+
+            let mut buf = vec![0u8; expected.len() + 8];
+            let mut sink = SliceSink::new(&mut buf, 0);
+            write_integer(&mut sink, n);
+            assert_eq!(sink.pos(), expected.len(), "n = {n}");
+            assert_eq!(&buf[..expected.len()], &expected[..], "n = {n}");
+        }
+    }
 
     #[test]
     fn test_count_same_bytes() {

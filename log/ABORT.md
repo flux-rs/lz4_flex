@@ -46,7 +46,14 @@ All `PtrSink` methods verify against the invariant except the two sites below.
 `pos >= 0` (`pos` is an `int` index). Fixed by adding `0 <= pos` to both sink
 invariants and the `Sink` trait's promises; no source change was needed.
 
-## function uid 9 — block::compress::write_integer (src/block/compress.rs:226) — PARTIAL
+## function uid 9 — block::compress::write_integer (src/block/compress.rs:226) — DONE (2026-10-15)
+
+**Resolved 2026-10-15** by the "rewrite the loop" fix below: the unsafe-encode
+`write_integer` now writes the `n / 255` `0xFF` bytes with one `ptr::write_bytes`
+and verifies `pos(v) == pos(s) + bytes_for_int(n)` exactly. The common case
+(`n < 255`) does the same work as the loop did. `write_integer_matches_loop`
+checks it writes the same bytes as the loop (also passes under Miri); the
+`safe-encode` build keeps the loop. Original entry:
 
 Verified: every `push_byte` is in bounds, under
 `requires pos(s) + bytes_for_int(n) <= cap(s)` (`bytes_for_int(n) = n / 255 + 1`,
@@ -75,7 +82,9 @@ room is left.
 - Possible fixes: a loop-invariant annotation in flux; or rewrite the loop so the
   count is computed first. Left as-is because the loop is the hot path's idiom.
 
-## function uid 20 — block::compress::handle_last_literals (src/block/compress.rs:250) — PARTIAL (blocked on uid 9)
+## function uid 20 — block::compress::handle_last_literals (src/block/compress.rs:250) — DONE (2026-10-15)
+
+**Resolved 2026-10-15** with uid 9; now also `ensures pos(s) < pos(v)`. Original entry:
 
 Spec: `requires start <= n && pos(s) + 1 + bytes_for_int(n - start) + (n - start) <= cap(s)`.
 The token `push_byte` and the `write_integer` call verify. The final
@@ -160,7 +169,26 @@ same impossible obligation to the caller.
   source comment says is intentional.
 - Trivially safe by inspection: the `vec!` has exactly `N` elements.
 
-## function uid 132 — block::compress::compress_into_vec_with_dict (src/block/compress.rs) — UNBLOCKED (2026-10-15), redo
+## function uid 132 — block::compress::compress_into_vec_with_dict (src/block/compress.rs) — ABORT (re-done 2026-10-15)
+
+**2026-10-15 result:** still 1 error (the `unwrap`), now for two reasons other
+than ICE 1:
+1. `compress_internal` *can* carry the needed fact. This spec verifies:
+   ```
+   #[flux_rs::spec(fn(input: &[u8][@n], input_pos: usize, output: &strg S[@s], dict: &mut T, ext_dict: &[u8], input_stream_offset: usize)
+                   -> Result<usize, CompressError>[<S as Sink>::pos(s) + crate::flux_specs::max_out(n - input_pos) <= <S as Sink>::cap(s)]
+                   ensures output: S)]
+   ```
+   But it isn't kept: with it, `compress_into_with_table`'s
+   `compress_internal(.., &mut SliceSink::new(output, 0), ..)` hits flux issue 4
+   (`infer.rs:937`), turning a clean function into an internal error. The same
+   would happen in `compress_into{,_with_dict}` if the fact were passed on through
+   `compress_into_sink_with_dict`. Restore once issue 4 is fixed.
+2. Even then, the sink is `PtrSink::from_vec(&mut Vec::with_capacity(max), ..)`,
+   and flux-alloc refines `Vec` by `len` only (no capacity), so nothing says the
+   sink has `max` bytes of room. Same gap as `PtrSink::from_vec` (type uid 1).
+
+Earlier note:
 
 **Update 2026-10-15:** ICE 1 is fixed upstream
 ([flux-rs/flux#1784](https://github.com/flux-rs/flux/issues/1784)) and the
@@ -210,3 +238,48 @@ One entry per function; the justification is why the regions can't overlap.
 | 67 | `block::decompress::copy_from_dict` | `ext_dict` → output | `ext_dict: &[u8]` vs the output buffer (`&mut [u8]` or a fresh `Vec`) |
 | 69 | `block::decompress::read_match_offset` | input → `&mut num` | destination is a fresh stack local |
 | 71 (+77, 80, 82: same def, other instantiations) | `block::decompress::decompress_internal` | input → output: hot-path `copy_nonoverlapping(input_ptr, output_ptr, 16)` and `slice_copy`'s `disjoint(input, output)` precondition | `input: &[u8]` vs the sink's buffer (`&mut [u8]` or a fresh `Vec`). This is the one place the decoder needs the assumption; `fastcpy_unsafe` proves non-overlap *from* it. |
+
+## function uids 22, 108, 109, 123, 125, 127, 128, 150, 151 — block::compress::compress_internal (src/block/compress.rs) — ABORT (2026-10-15)
+
+First check after ICE 1 was fixed: 14 errors → **9**. Fixed along the way:
+`count_same_bytes` exports `cur + END_OFFSET <= n`; `backtrack_match` keeps
+`literal_start <= cur`; `get_maximum_output_size` has an exact spec (`max_out`);
+`write_integer`/`handle_last_literals` give `pos` (uids 9, 20); and
+`1 << INCREASE_STEPSIZE_BITSHIFT` / `>> ..` became `32` / `/ 32` (a shifted value
+in the loop stopped flux inferring `literal_start <= cur`; flux-ice-issues.md #7).
+All input-side bounds now verify: hashing at `cur` and `cur - 2`, literal copies,
+`lit_len`, and the in-input match candidate.
+
+Remaining, by cause:
+
+**(a) Output capacity in the main loop — 7 errors** (`push_byte(token)`, both
+`write_integer`s, `copy_literals_wild`'s sink side, `push_u16`, the in-loop
+`handle_last_literals`, and `output.pos() - output_start_pos` on that return).
+The function checks `cap - pos >= max_out(n - input_pos)` once, up front; each
+sequence writes less than `max_out` shrinks by. Proving that needs the outer-loop
+invariant `pos(output) + max_out(n - literal_start) <= cap(output)` (and
+`output_start_pos <= pos(output)`), which mentions the generic sink's
+`<S as Sink>::pos`.
+- Hand-written qualifiers can't name a generic's assoc refinement (as uid 9 found).
+- The new local `qualifier!` macro can, syntactically, but crashes flux:
+  `<S as Sink>::pos(out)` → `desugar.rs:1057` unwrap on `None`; `S::pos(out)` →
+  `conv/mod.rs:1530` (flux-ice-issues.md #8).
+- `#[flux_rs::opts(scrape_quals = true)]`: z3 ran 40+ minutes without finishing.
+- The pre-loop part (the `input.len() - input_pos < LZ4_MIN_LENGTH` early
+  return) verifies, so the bound itself is right.
+
+**(b) External-dictionary match candidates — 2 errors** (`get_batch(candidate_source,
+candidate)` and `count_same_bytes`'s `candidate <= m`, both in the `USE_DICT` branch).
+`candidate` comes from `dict.get_at`, which can return anything. In the
+in-input branch the code itself bounds it; in the ext-dict branch it only proves
+`candidate - ext_dict_stream_offset < ext_dict.len()`, but the read needs 4
+(and the match `MINMATCH`) bytes. Safe by inspection in the block API:
+`init_dict` only stores `i` with `i + 8 <= dict.len()`, and `compress_internal`
+only stores positions at most `input_stream_offset + n - 8`. Proving it needs an
+invariant on the hash table's contents.
+- Related, not an error here: `candidate >= ext_dict_stream_offset` is only a
+  `debug_assert!`. Flux uses it (cargo flux builds with debug assertions), but in
+  release `candidate -= ext_dict_stream_offset` would wrap if a table held an
+  older position within `MAX_DISTANCE`. The comment says this "may fail if we
+  lost history". Not reachable through `compress_into_with_dict` (fresh table);
+  worth checking for the frame encoder's linked blocks (`frame` is cfg'd out here).
