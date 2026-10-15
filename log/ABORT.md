@@ -149,6 +149,10 @@ same impossible obligation to the caller.
   is `N`. flux-alloc has none of these, and a local spec for the analogous
   `TryFrom<&[T]> for &[T; N]` crashes flux (ICE 3 in
   `~/Desktop/Code/flux/flux-ice-issues.md`).
+- **Accepted flux ICE** (2026-10-15):
+  [flux-rs/flux#1786](https://github.com/flux-rs/flux/issues/1786), still open;
+  repro still crashes on the rebased driver (`fixpoint_encoding.rs:809`). Leave
+  this ABORT as is until #1786 is fixed.
 - Strategies tried: (1) no precondition applies (no arguments); (2) no struct
   refinement helps (the array length is already in the type); (3) extern specs:
   blocked by the crash above.
@@ -156,7 +160,14 @@ same impossible obligation to the caller.
   source comment says is intentional.
 - Trivially safe by inspection: the `vec!` has exactly `N` elements.
 
-## function uid 132 — block::compress::compress_into_vec_with_dict (src/block/compress.rs) — blocked on flux ICE 1
+## function uid 132 — block::compress::compress_into_vec_with_dict (src/block/compress.rs) — UNBLOCKED (2026-10-15), redo
+
+**Update 2026-10-15:** ICE 1 is fixed upstream
+([flux-rs/flux#1784](https://github.com/flux-rs/flux/issues/1784)) and the
+`trusted` on `compress_internal` is removed. `compress_internal` now checks (14
+errors), so redo `compress_internal` (uids 22, 108, 109, 123, 125, 127, 128,
+150, 151) and then this uid. Original entry:
+
 
 - Error: `unwrap` precondition on `compress_into_sink_with_dict(..).unwrap()` (line ~705).
 - Root cause: the `unwrap` is safe because the `Vec` has `get_maximum_output_size`
@@ -168,7 +179,8 @@ same impossible obligation to the caller.
 
 ## function uids 79, 81 — block::decompress::decompress_into{_with_dict} — flux internal error
 
-- Error: `internal flux error: crates/flux-infer/src/infer.rs:887:22`,
+- Error: `internal flux error: crates/flux-infer/src/infer.rs:887:22` (line 937
+  on the 2026-10-15 driver; still reproduces, **not yet filed upstream**),
   `incompatible types: SliceSink { output: .., pos: usize[0] } - SliceSink<'_>[?]`
   on `decompress_internal::<_, _>(input, &mut SliceSink::new(output, 0), ..)`.
 - Root cause: flux bug. A value from a constructor whose spec returns an indexed

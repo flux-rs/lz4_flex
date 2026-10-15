@@ -189,6 +189,11 @@ A minimal 40-line reproduction is in the session scratchpad: six deliberate
 
 ## ICEs
 
+**Update 2026-10-15:** the `checker.rs` ICE is fixed upstream (flux-rs/flux#1784)
+and `compress_internal` is no longer `trusted`. The `type_env.rs` ICE is filed as
+flux-rs/flux#1785 and accepted (stays `trusted`). Current status:
+`log/NOTES.md`, "Flux upgrade". Original triage below.
+
 Three ICE sites, **two distinct flux bugs**:
 
 | bug | site | live in pointer config? |

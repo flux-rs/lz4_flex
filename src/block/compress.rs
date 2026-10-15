@@ -336,7 +336,6 @@ fn backtrack_match(
 // Intentionally avoid inlining.
 // Empirical tests revealed it to be rarely better but often significantly detrimental.
 #[inline(never)]
-#[flux_rs::trusted(reason = "panicked at crates/flux-refineck/src/checker.rs:2627:28")]
 pub(crate) fn compress_internal<T: HashTable, const USE_DICT: bool, S: Sink>(
     input: &[u8],
     input_pos: usize,

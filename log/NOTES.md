@@ -23,8 +23,9 @@ Crate-wide errors after Phase 1: 306 (baseline 357).
   `#![feature(custom_inner_attributes)]`, and once a check has no other errors
   `deny(warnings)` fails the build on the unused-feature lint.
 - Flux driver: local branch `kris-gaudel/auto-strong-callgraph` in the flux repo
-  (driver `3450fb82` + Ranjit's `dump-callgraph` + a local fix for empty call
+  (auto-strong-returned + Ranjit's `dump-callgraph` + a local fix for empty call
   graph dumps on cyclic graphs). See `~/Desktop/Code/flux/callgraph-dump-issues.md`.
+  Rebased 2026-10-15; see "Flux upgrade" below.
 - Running flux needs the sandbox off when `FLUXFLAGS` changes: the flux deps
   rebuild and flux writes a tempdir into their `~/.cargo` checkout.
 
@@ -88,3 +89,50 @@ bounds reasoning (`decompress_internal` apart from its 2 input/output copies,
 `duplicate`, `wild_copy_from_src_16`, `copy_from_dict`'s bounds, the input
 readers), both sinks, both `slice_copy`s, the compression helpers'
 bounds, the hash tables' indexing, and `uncompressed_size`.
+
+## Flux upgrade (2026-10-15)
+
+Rebased the driver to pick up the fix for ICE 1
+([flux-rs/flux#1784](https://github.com/flux-rs/flux/issues/1784), fixed by
+flux-rs/flux#1851).
+
+- Driver: `kris-gaudel/auto-strong-callgraph` rebased onto upstream `main`
+  `736010e1` (now `b472d892`; the old tip is kept as
+  `kris-gaudel/auto-strong-callgraph-prerebase`). The 19 local commits carried over
+  unchanged apart from import/doc-comment conflicts. Installed with `cargo xtask install`.
+- Toolchain: `nightly-2026-08-21` → `nightly-2026-10-11` (`rust-toolchain.toml`,
+  to match the driver).
+- flux libs: `cargo update -p flux-rs --precise 736010e1…`. `Cargo.lock` is
+  gitignored, so the pin is local only; the old `c4605619` libs fail to compile
+  against the new toolchain.
+- liquid-fixpoint: the driver now needs the `:self` feature (flux-rs/flux#1829),
+  so the June 8 `fixpoint` binary fails with `expected value at line 1 column 1`.
+  Installed the 2026-10-13 nightly into `~/.cargo/bin/fixpoint` (old binary at
+  `fixpoint.bak-20260608`).
+
+### ICE status (each minimal repro rerun on the new driver)
+
+| ICE | upstream | status |
+|---|---|---|
+| 1 `marker_at_dominator` (`compress_internal`) | #1784 closed | **fixed**; `trusted` removed from `compress_internal` |
+| 2 `type_env.rs` free vars (frame `read_to_string`/`read_to_end`) | #1785 open | **accepted**: stays `trusted`, reasons cite the issue. `frame` is `cfg`'d out in this config anyway |
+| 3 fixpoint `Tuple0` vs `int` (`TryFrom` extern spec) | #1786 open | **accepted**: `HashTable*::new` stays ABORTed (ABORT.md) |
+| 4 `infer.rs:937` incompatible types (`decompress_into{,_with_dict}`) | not filed | still errors; uids 79/81 stay ABORTed |
+
+"Accepted" means: known, filed upstream, worked around (`trusted` or ABORT), not
+a reason to stop. Don't rerun `flux_thaw` on these.
+
+Two new flux problems on this driver (not crashes) are written up as issues 5
+(`static` initializer `MulWithOverflow`, 3-line repro) and 6 (`count_same_bytes`
+invariant regression) in `~/Desktop/Code/flux/flux-ice-issues.md`. Neither is
+filed upstream yet.
+
+### Full sweep after the upgrade: 29 → 57 errors, 0 ICEs
+
+All 29 earlier errors are unchanged. New:
+
+| errors | where | cause | action |
+|---:|---|---|---|
+| 14 | `compress_internal` | newly checked (was `trusted` for ICE 1) | Phase 2: redo uids 22, 108, 109, 123, 125, 127, 128, 150, 151, then 132 |
+| 13 | `count_same_bytes` (uid 16, was DONE) | **regression**: the loop invariant is no longer inferred. Commit `b01d35b` attached the `qualifiers` to the `safe-encode` copy (compiled out, and in a `crate::flux_specs::` path form flux rejects), so the unsafe copy never had them; the old kvar encoding inferred the invariant anyway, the `:self` encoding doesn't. Adding `LeSum, Pos, CoversSum` or the full decompress set to the unsafe copy still leaves 13 errors | Phase 2: redo uid 16 |
+| 1 | `block/mod.rs:78` `static LZ4_64KLIMIT = (64 * 1024) + …` | **new**: `unsupported statement` (`MulWithOverflow`); the driver now checks this initializer | rewrite as `65536 + (MFLIMIT - 1)` or ABORT |
