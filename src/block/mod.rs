@@ -77,7 +77,7 @@ const FASTLOOP_SAFE_DISTANCE: usize = 64;
 #[allow(dead_code)]
 // CENTRIFUGE: `static` -> `const` (unused either way). Flux rejects the
 // overflow-checked arithmetic in a `static` initializer (`MulWithOverflow`,
-// issue 5 in flux-ice-issues.md); a `const` is evaluated by rustc instead.
+// flux-rs/flux#1860); a `const` is evaluated by rustc instead.
 const LZ4_64KLIMIT: usize = (64 * 1024) + (MFLIMIT - 1);
 
 /// An error representing invalid compressed data.

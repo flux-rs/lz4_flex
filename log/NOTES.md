@@ -82,7 +82,7 @@ error is logged in `ABORT.md`:
 | **real bug** (out-of-bounds `ptr::add`) | 1 | `duplicate_overlapping`; test in `tests/duplicate_overlapping_ub.rs` |
 | flux-alloc gaps (`Vec` capacity, `vec!` → `Box<[T; N]>`) | 7 | `PtrSink::from_vec` (4), `HashTable*::new` (3) |
 | loop invariant flux can't express (const-generic modulus; generic assoc `pos`) | 5 | `fastcpy_unsafe::wild_copy_from_src` (4), `handle_last_literals` (via `write_integer`) |
-| blocked on a flux bug | 3 | `compress_into_vec_with_dict` (ICE 1), `decompress_into{,_with_dict}` (issue 4, `infer.rs:887`) |
+| blocked on a flux bug | 3 | `compress_into_vec_with_dict` (ICE 1), `decompress_into{,_with_dict}` (flux-rs/flux#1859, `infer.rs:887`) |
 
 Functions verified with no assumptions include the whole decompression path's
 bounds reasoning (`decompress_internal` apart from its 2 input/output copies,
@@ -117,15 +117,15 @@ flux-rs/flux#1851).
 | 1 `marker_at_dominator` (`compress_internal`) | #1784 closed | **fixed**; `trusted` removed from `compress_internal` |
 | 2 `type_env.rs` free vars (frame `read_to_string`/`read_to_end`) | #1785 open | **accepted**: stays `trusted`, reasons cite the issue. `frame` is `cfg`'d out in this config anyway |
 | 3 fixpoint `Tuple0` vs `int` (`TryFrom` extern spec) | #1786 open | **accepted**: `HashTable*::new` stays ABORTed (ABORT.md) |
-| 4 `infer.rs:937` incompatible types (`decompress_into{,_with_dict}`) | not filed | still errors; uids 79/81 stay ABORTed |
+| 4 `infer.rs:937` incompatible types (`decompress_into{,_with_dict}`) | #1859 open (filed 2026-10-16) | still errors; uids 79/81 stay ABORTed |
 
 "Accepted" means: known, filed upstream, worked around (`trusted` or ABORT), not
 a reason to stop. Don't rerun `flux_thaw` on these.
 
-Two new flux problems on this driver (not crashes) are written up as issues 5
-(`static` initializer `MulWithOverflow`, 3-line repro) and 6 (`count_same_bytes`
-invariant regression) in `~/Desktop/Code/flux/flux-ice-issues.md`. Neither is
-filed upstream yet.
+New flux problems found on this driver, filed 2026-10-16: #1860 (`static`
+initializer `MulWithOverflow`), #1861 (loop bound indexed by an expression; the
+`count_same_bytes` regression), #1862 (`<<`-initialised local breaks an unrelated
+invariant), #1863 (ICE: `qualifier!` with a generic's assoc refinement).
 
 ### Full sweep after the upgrade: 29 → 57 errors, 0 ICEs
 
@@ -143,7 +143,12 @@ Found by reducing the regression in a scratch crate and running `fixpoint` on th
 dumped constraint (`FLUXFLAGS=-Fdump-constraint`). Removing `:self` doesn't help,
 so it isn't the new encoding as such.
 
-1. **A qualifier's first parameter must be loop-varying.** Fixpoint binds a
+> **Correction (2026-10-16):** rule 1 is wrong. On a clean reduction the
+> original `LeSum` order works, and so do no qualifiers at all; rule 2 is the
+> whole cause (flux-rs/flux#1861). `SizeCovers` is still what `count_same_bytes`
+> uses, together with `match_end`.
+
+1. ~~**A qualifier's first parameter must be loop-varying.**~~ Fixpoint binds a
    qualifier's first argument to one of the kvar's own (`:self`) arguments, i.e.
    the values that change around the loop. `LeSum(v, a, b) { v <= a + b }` with
    `v = end` (fixed) never instantiates. Put the varying value first:
@@ -166,11 +171,11 @@ kvar). Expect the same in `compress_internal`'s loops.
 | uid 9 `write_integer` | DONE (was PARTIAL): loop-free rewrite (`ptr::write_bytes` for the `0xFF` run), exact `pos` postcondition; `write_integer_matches_loop` test, Miri-clean |
 | uid 20 `handle_last_literals` | DONE (was PARTIAL): follows from uid 9 |
 | `compress_internal` (uids 22, 108, 109, 123, 125, 127, 128, 150, 151) | ABORT, 14 → 9: all input-side bounds verify; 7 output-capacity errors need a generic-sink loop invariant (inexpressible; `qualifier!` crashes flux), 2 ext-dict candidate errors need a hash-table invariant |
-| uid 132 `compress_into_vec_with_dict` | ABORT: `compress_internal`'s `Result` spec verifies but triggers flux issue 4 at a caller, and flux-alloc has no `Vec` capacity |
+| uid 132 `compress_into_vec_with_dict` | ABORT: `compress_internal`'s `Result` spec verifies but triggers flux-rs/flux#1859 at a caller, and flux-alloc has no `Vec` capacity |
 
 Other source changes (all `CENTRIFUGE`): `1 << INCREASE_STEPSIZE_BITSHIFT` /
 `>> INCREASE_STEPSIZE_BITSHIFT` → `32` / `/ 32` with a const assert (a shifted
-value in a loop broke an unrelated invariant, flux-ice-issues.md #7);
+value in a loop broke an unrelated invariant, flux-rs/flux#1862);
 `get_maximum_output_size` spec via `flux_specs::max_out`; `backtrack_match` now
 requires `literal_start <= cur` (all callers satisfy it) and keeps it.
 
@@ -182,8 +187,19 @@ The 37 remaining errors, by category (all logged in ABORT.md):
 | `compress_internal`: generic-sink capacity invariant (7) + hash-table contents (2) | 9 |
 | flux-alloc gaps (`Vec` capacity, `vec!` → `Box<[T; N]>`) | 7 |
 | `fastcpy_unsafe::wild_copy_from_src` const-generic modular invariant | 4 |
-| blocked on flux bugs: issue 4 (`decompress_into{,_with_dict}`), uid 132 | 3 |
-| **real bug** (`duplicate_overlapping`, advisory drafted) | 1 |
+| blocked on flux bugs: #1859 (`decompress_into{,_with_dict}`), uid 132 | 3 |
+| **real bug** (`duplicate_overlapping`, advisory filed 2026-10-16) | 1 |
 
 Nothing is left to try with the current flux: every remaining error is either a
 documented assumption, a real bug, or blocked on a flux/flux-alloc limitation.
+
+## Wrap-up (2026-10-16): lz4_flex Fluxing done
+
+37 errors, 0 ICEs on the `736010e1` driver; every error is in ABORT.md. One real
+bug (`duplicate_overlapping`), reported to lz4_flex as a private security
+advisory. Flux issues filed: #1859–#1863 (plus #1784–#1786 earlier). Reopen when:
+- #1859 is fixed: re-check uids 79/81 and restore `compress_internal`'s `Result`
+  spec (text in ABORT.md, uid 132).
+- #1863 is fixed or flux gets loop-invariant annotations: the 7
+  `compress_internal` output-capacity errors.
+- lz4_flex fixes `duplicate_overlapping`: drop that error.

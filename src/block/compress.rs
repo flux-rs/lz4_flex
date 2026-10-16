@@ -31,7 +31,8 @@ const INCREASE_STEPSIZE_BITSHIFT: usize = 5;
 // CENTRIFUGE: `compress_internal` uses `32` / `/ 32` instead of
 // `1 << INCREASE_STEPSIZE_BITSHIFT` / `>> INCREASE_STEPSIZE_BITSHIFT` (same values).
 // Flux doesn't model `<<`/`>>`, and on the 2026-10-15 driver a shifted value in
-// the loop stops it inferring unrelated invariants (`literal_start <= cur`).
+// the loop stops it inferring unrelated invariants (`literal_start <= cur`,
+// flux-rs/flux#1862).
 // Keep the two in sync:
 const _: () = assert!(1 << INCREASE_STEPSIZE_BITSHIFT == 32);
 
@@ -158,7 +159,8 @@ fn count_same_bytes(input: &[u8], cur: &mut usize, source: &[u8], candidate: usi
 /// CENTRIFUGE: `count_same_bytes`'s `input_end` computation, unchanged, moved
 /// into a helper. Since the 2026-10-15 flux upgrade, a loop bound whose index is
 /// `cur + clamp(..)` (from `saturating_sub`'s spec) no longer reaches the loop
-/// invariant; returning it through this spec gives the loop a plain bounded value.
+/// invariant (flux-rs/flux#1861); returning it through this spec gives the loop a
+/// plain bounded value.
 #[cfg(not(feature = "safe-encode"))]
 #[inline]
 #[flux_rs::spec(fn(n: usize, c: usize, m: usize, cand: usize{cand <= m}) -> usize{v:

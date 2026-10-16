@@ -180,10 +180,10 @@ than ICE 1:
                    ensures output: S)]
    ```
    But it isn't kept: with it, `compress_into_with_table`'s
-   `compress_internal(.., &mut SliceSink::new(output, 0), ..)` hits flux issue 4
+   `compress_internal(.., &mut SliceSink::new(output, 0), ..)` hits flux-rs/flux#1859
    (`infer.rs:937`), turning a clean function into an internal error. The same
    would happen in `compress_into{,_with_dict}` if the fact were passed on through
-   `compress_into_sink_with_dict`. Restore once issue 4 is fixed.
+   `compress_into_sink_with_dict`. Restore once flux-rs/flux#1859 is fixed.
 2. Even then, the sink is `PtrSink::from_vec(&mut Vec::with_capacity(max), ..)`,
    and flux-alloc refines `Vec` by `len` only (no capacity), so nothing says the
    sink has `max` bytes of room. Same gap as `PtrSink::from_vec` (type uid 1).
@@ -213,8 +213,7 @@ errors), so redo `compress_internal` (uids 22, 108, 109, 123, 125, 127, 128,
   on `decompress_internal::<_, _>(input, &mut SliceSink::new(output, 0), ..)`.
 - Root cause: flux bug. A value from a constructor whose spec returns an indexed
   type (`SliceSink::new -> SliceSink[pos, n]`), lent to a generic `&strg S`
-  parameter, fails to unify. Minimal snippet: issue 4 in
-  `~/Desktop/Code/flux/flux-ice-issues.md`.
+  parameter, fails to unify. Filed as flux-rs/flux#1859.
 - Tried: binding the sink to a local first (same error). Not tried: dropping
   `new`'s indexed return spec, which would lose the `pos <= cap` guarantee that
   `SliceSink`'s invariant relies on.
@@ -246,7 +245,7 @@ First check after ICE 1 was fixed: 14 errors → **9**. Fixed along the way:
 `literal_start <= cur`; `get_maximum_output_size` has an exact spec (`max_out`);
 `write_integer`/`handle_last_literals` give `pos` (uids 9, 20); and
 `1 << INCREASE_STEPSIZE_BITSHIFT` / `>> ..` became `32` / `/ 32` (a shifted value
-in the loop stopped flux inferring `literal_start <= cur`; flux-ice-issues.md #7).
+in the loop stopped flux inferring `literal_start <= cur`; flux-rs/flux#1862).
 All input-side bounds now verify: hashing at `cur` and `cur - 2`, literal copies,
 `lit_len`, and the in-input match candidate.
 
@@ -263,7 +262,7 @@ invariant `pos(output) + max_out(n - literal_start) <= cap(output)` (and
 - Hand-written qualifiers can't name a generic's assoc refinement (as uid 9 found).
 - The new local `qualifier!` macro can, syntactically, but crashes flux:
   `<S as Sink>::pos(out)` → `desugar.rs:1057` unwrap on `None`; `S::pos(out)` →
-  `conv/mod.rs:1530` (flux-ice-issues.md #8).
+  `conv/mod.rs:1530` (flux-rs/flux#1863).
 - `#[flux_rs::opts(scrape_quals = true)]`: z3 ran 40+ minutes without finishing.
 - The pre-loop part (the `input.len() - input_pos < LZ4_MIN_LENGTH` early
   return) verifies, so the bound itself is right.
@@ -278,8 +277,13 @@ in-input branch the code itself bounds it; in the ext-dict branch it only proves
 only stores positions at most `input_stream_offset + n - 8`. Proving it needs an
 invariant on the hash table's contents.
 - Related, not an error here: `candidate >= ext_dict_stream_offset` is only a
-  `debug_assert!`. Flux uses it (cargo flux builds with debug assertions), but in
-  release `candidate -= ext_dict_stream_offset` would wrap if a table held an
-  older position within `MAX_DISTANCE`. The comment says this "may fail if we
-  lost history". Not reachable through `compress_into_with_dict` (fresh table);
-  worth checking for the frame encoder's linked blocks (`frame` is cfg'd out here).
+  `debug_assert!` (flux uses it; release would wrap on `candidate -=
+  ext_dict_stream_offset`). Checked by inspection 2026-10-16, **not reachable**:
+  a candidate is only used within `MAX_DISTANCE` (65535) of `cur`. The block API
+  starts from a fresh table with `ext_dict_stream_offset == 0`. The frame
+  encoder's linked mode keeps `src_start + ext_dict_len >= WINDOW_SIZE` (65536)
+  when it shrinks the ext dict (`src/frame/compress.rs:342`), and `cur >=
+  src_start`, so `candidate >= input_stream_offset - ext_dict_len`. The 4-byte
+  read near the dict end is safe because stored positions are at least `MFLIMIT`
+  bytes before their buffer's end. No test drives linked frames into the shrink
+  branch.
