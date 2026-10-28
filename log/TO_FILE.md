@@ -19,7 +19,7 @@ re-checked 2026-10-28.
 | [#1859](https://github.com/flux-rs/flux/issues/1859) | ICE, `infer.rs:937` on `SliceSink::new` lent `&strg` to a generic | open | `decompress_into{,_with_dict}` (2 `ICE:` trusts); also blocks `compress_internal`'s `Result` spec (uid 132) |
 | [#1860](https://github.com/flux-rs/flux/issues/1860) | `MulWithOverflow` in a `static` initializer | open | worked around (`static` → `const`) |
 | [#1861](https://github.com/flux-rs/flux/issues/1861) | loop invariant not inferred (bound is an indexed local) | open | worked around |
-| [#1862](https://github.com/flux-rs/flux/issues/1862) | a `<<`-initialised local stops loop-invariant inference | open | worked around (`<<` → `*`) |
+| [#1862](https://github.com/flux-rs/flux/issues/1862) | a `<<`-initialised local stops loop-invariant inference | open | worked around (`1 << k` → `32`, `>> k` → `/ 32`) |
 | [#1863](https://github.com/flux-rs/flux/issues/1863) | ICE, `qualifier!` naming a generic's assoc refinement | open | blocks `compress_internal`'s 7 output-capacity errors (`ABORT:`) |
 
 Shared flux issues found in thin-vec/ringbuf (`size_of >= 0`, `from_raw_parts` specs) may also
