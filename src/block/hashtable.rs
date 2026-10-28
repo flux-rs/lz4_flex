@@ -79,6 +79,7 @@ impl HashTable4KU16 {
     /// Creates a new zeroed hash table.
     #[cfg(feature = "alloc")]
     #[inline]
+    #[flux_rs::trusted(reason = "ABORT: vec![0; N].into_boxed_slice().try_into().unwrap() needs flux-alloc specs; local spec crashes flux (flux#1786) (ABORT.md uids 86/91/97)")]
     pub fn new() -> Self {
         // This generates more efficient assembly in contrast to Box::new(slice), because of an
         // optimized call alloc_zeroed, vs. alloc + memset
@@ -133,6 +134,7 @@ impl HashTable4K {
     /// Creates a new zeroed hash table.
     #[cfg(feature = "alloc")]
     #[inline]
+    #[flux_rs::trusted(reason = "ABORT: vec![0; N].into_boxed_slice().try_into().unwrap() needs flux-alloc specs; local spec crashes flux (flux#1786) (ABORT.md uids 86/91/97)")]
     pub fn new() -> Self {
         let dict = alloc::vec![0; HASHTABLE_SIZE_4K]
             .into_boxed_slice()
@@ -192,6 +194,7 @@ pub(crate) struct HashTable8K {
 impl HashTable8K {
     #[cfg(feature = "alloc")]
     #[inline]
+    #[flux_rs::trusted(reason = "ABORT: vec![0; N].into_boxed_slice().try_into().unwrap() needs flux-alloc specs; local spec crashes flux (flux#1786) (ABORT.md uids 86/91/97)")]
     pub(crate) fn new() -> Self {
         let dict = alloc::vec![0; HASHTABLE_SIZE_8K]
             .into_boxed_slice()

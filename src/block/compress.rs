@@ -383,6 +383,7 @@ fn backtrack_match(
 // Intentionally avoid inlining.
 // Empirical tests revealed it to be rarely better but often significantly detrimental.
 #[inline(never)]
+#[flux_rs::trusted(reason = "ABORT: output capacity loop invariant over generic <S as Sink>::pos crashes qualifier! (flux#1863); ext-dict candidates need hash-table contents (ABORT.md compress_internal)")]
 pub(crate) fn compress_internal<T: HashTable, const USE_DICT: bool, S: Sink>(
     input: &[u8],
     input_pos: usize,
@@ -587,6 +588,7 @@ fn push_u16(output: &mut impl Sink, el: u16) {
 #[flux_rs::spec(fn(output: &strg S[@s], el: u16)
                 requires <S as Sink>::pos(s) + 2 <= <S as Sink>::cap(s)
                 ensures output: S{v: <S as Sink>::pos(v) == <S as Sink>::pos(s) + 2 && <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 fn push_u16<S: Sink>(output: &mut S, el: u16) {
     unsafe {
         core::ptr::copy_nonoverlapping(el.to_le_bytes().as_ptr(), output.pos_mut_ptr(), 2);
@@ -607,6 +609,7 @@ fn copy_literals_wild(output: &mut impl Sink, input: &[u8], input_start: usize, 
                 requires input_start + crate::flux_specs::wild_len(len) <= n
                       && <S as Sink>::pos(s) + crate::flux_specs::wild_len(len) <= <S as Sink>::cap(s)
                 ensures output: S{v: <S as Sink>::pos(v) == <S as Sink>::pos(s) + len && <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 fn copy_literals_wild<S: Sink>(output: &mut S, input: &[u8], input_start: usize, len: usize) {
     debug_assert!(input_start + len / 8 * 8 + ((len % 8) != 0) as usize * 8 <= input.len());
     debug_assert!(output.pos() + len / 8 * 8 + ((len % 8) != 0) as usize * 8 <= output.capacity());
@@ -714,6 +717,7 @@ pub fn compress_into_with_dict(
 
 #[cfg(feature = "alloc")]
 #[inline]
+#[flux_rs::trusted(reason = "ABORT: unwrap needs compress_internal's capacity fact (blocked by flux#1859) and Vec capacity (ABORT.md uid 132)")]
 fn compress_into_vec_with_dict<const USE_DICT: bool>(
     input: &[u8],
     prepend_size: bool,
@@ -898,6 +902,7 @@ pub fn compress_into_with_table(
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
 #[flux_rs::spec(fn(input: *const[@p] u8) -> _ requires crate::flux_specs::readable(p, 2))]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 fn read_u16_ptr(input: *const u8) -> u16 {
     let mut num: u16 = 0;
     unsafe {
@@ -909,6 +914,7 @@ fn read_u16_ptr(input: *const u8) -> u16 {
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
 #[flux_rs::spec(fn(input: *const[@p] u8) -> _ requires crate::flux_specs::readable(p, 4))]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 fn read_u32_ptr(input: *const u8) -> u32 {
     let mut num: u32 = 0;
     unsafe {
@@ -920,6 +926,7 @@ fn read_u32_ptr(input: *const u8) -> u32 {
 #[inline]
 #[cfg(not(feature = "safe-encode"))]
 #[flux_rs::spec(fn(input: *const[@p] u8) -> _ requires crate::flux_specs::readable(p, 8))]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 fn read_usize_ptr(input: *const u8) -> usize {
     let mut num: usize = 0;
     unsafe {

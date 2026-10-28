@@ -76,6 +76,7 @@ fn wild_copy_from_src_16(mut source: *const u8, mut dst_ptr: *mut u8, num_items:
                 requires crate::flux_specs::writable(o, match_length) && crate::flux_specs::readable(s, match_length)
                 ensures output_ptr: *mut{v: v.base == o.base && v.addr == o.addr + match_length && v.size == o.size - match_length} u8)]
 #[flux_rs::qualifiers(Pos, CoversSum, Lockstep, LeSum, LtSum)]
+#[flux_rs::trusted(reason = "BUG: loop test output_ptr.add(1) forms a pointer two past the end when match_length is even (ABORT.md uid 65, tests/duplicate_overlapping_ub.rs)")]
 unsafe fn duplicate_overlapping(
     output_ptr: &mut *mut u8,
     mut start: *const u8,
@@ -115,6 +116,7 @@ unsafe fn duplicate_overlapping(
                 ensures output_ptr: *mut[o.base,
                                          o.addr + crate::flux_specs::dict_copied(match_length, offset, o.addr - b.addr),
                                          o.size - crate::flux_specs::dict_copied(match_length, offset, o.addr - b.addr)] u8)]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 unsafe fn copy_from_dict(
     output_base: *mut u8,
     output_ptr: &mut *mut u8,
@@ -202,6 +204,7 @@ pub(super) fn read_integer_ptr(
 #[flux_rs::spec(fn(input_ptr: &strg *const[@p] u8) -> Result<u16, DecompressError>
                 requires crate::flux_specs::readable(p, 2)
                 ensures input_ptr: *const[p.base, p.addr + 2, p.size - 2] u8)]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 fn read_match_offset(input_ptr: &mut *const u8) -> Result<u16, DecompressError> {
     let mut num: u16 = 0;
     unsafe {
@@ -251,6 +254,7 @@ fn does_token_fit(token: u8) -> bool {
 #[flux_rs::spec(fn(input: &[u8][@n], output: &strg S[@s], ext_dict: &[u8][@m]) -> Result<usize, DecompressError>
                 ensures output: S{v: <S as Sink>::cap(v) == <S as Sink>::cap(s)})]
 #[flux_rs::qualifiers(Pos, EqInt, LeInt, LtInt, SumEq, LeSum, LtSum, CoversSum, Lockstep)]
+#[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
 pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
     input: &[u8],
     output: &mut S,
@@ -514,6 +518,7 @@ pub(crate) fn decompress_internal<const USE_DICT: bool, S: Sink>(
 /// Decompress all bytes of `input` into `output`.
 /// `output` should be preallocated with a size of of the uncompressed data.
 #[inline]
+#[flux_rs::trusted(reason = "ICE: infer.rs:937 incompatible types on SliceSink::new lent to generic &strg S (flux-rs/flux#1859)")]
 pub fn decompress_into(input: &[u8], output: &mut [u8]) -> Result<usize, DecompressError> {
     decompress_internal::<false, _>(input, &mut SliceSink::new(output, 0), b"")
 }
@@ -522,6 +527,7 @@ pub fn decompress_into(input: &[u8], output: &mut [u8]) -> Result<usize, Decompr
 ///
 /// Returns the number of bytes written (decompressed) into `output`.
 #[inline]
+#[flux_rs::trusted(reason = "ICE: infer.rs:937 incompatible types on SliceSink::new lent to generic &strg S (flux-rs/flux#1859)")]
 pub fn decompress_into_with_dict(
     input: &[u8],
     output: &mut [u8],

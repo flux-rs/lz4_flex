@@ -349,7 +349,7 @@ impl<R: io::Read> FrameDecoder<R> {
     }
 }
 
-#[flux_rs::trusted_impl(reason = "accepted flux ICE: https://github.com/flux-rs/flux/issues/1785")]
+#[flux_rs::trusted_impl(reason = "ICE: accepted, flux-rs/flux#1785")]
 impl<R: io::Read> io::Read for FrameDecoder<R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         loop {
@@ -367,7 +367,7 @@ impl<R: io::Read> io::Read for FrameDecoder<R> {
         }
     }
 
-    #[flux_rs::trusted(reason = "accepted flux ICE: https://github.com/flux-rs/flux/issues/1785")]
+    #[flux_rs::trusted(reason = "ICE: accepted, flux-rs/flux#1785")]
     fn read_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
         let mut written = 0;
         loop {
@@ -391,7 +391,7 @@ impl<R: io::Read> io::Read for FrameDecoder<R> {
         }
     }
 
-    #[flux_rs::trusted(reason = "accepted flux ICE: https://github.com/flux-rs/flux/issues/1785")]
+    #[flux_rs::trusted(reason = "ICE: accepted, flux-rs/flux#1785")]
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         let mut written = 0;
         loop {

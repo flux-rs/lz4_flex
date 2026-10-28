@@ -1,5 +1,9 @@
 # ABORT log — lz4_flex
 
+Every function below that still has errors is now `#[flux_rs::trusted(reason = "ABORT: …")]`
+(`duplicate_overlapping`: `"BUG: …"`; `decompress_into{,_with_dict}`: `"ICE: … #1859"`), so
+`cargo flux` is clean. Entries marked DONE are not trusted.
+
 ## type uid 1 — sink::PtrSink (src/sink.rs)
 
 Annotated with `refined_by(out: ptr, pos: int, cap: int)` and

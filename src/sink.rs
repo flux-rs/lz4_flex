@@ -267,6 +267,7 @@ impl PtrSink {
     /// # Panics
     /// Panics if `pos` is out of bounds.
     #[inline]
+    #[flux_rs::trusted(reason = "ABORT: PtrSink invariant needs Vec capacity; flux-alloc refines Vec by len only (ABORT.md type uid 1)")]
     pub(crate) fn from_vec(output: &mut Vec<u8>, pos: usize) -> Self {
         assert!(
             pos <= output.len(),
@@ -361,6 +362,7 @@ impl Sink for PtrSink {
     #[flux_rs::spec(fn(self: &strg PtrSink[@s], data: &[u8][@n], copy_len: usize)
                     requires s.pos + n <= s.cap
                     ensures self: PtrSink{v: v.pos == s.pos + copy_len && v.cap == s.cap && copy_len <= n})]
+    #[flux_rs::trusted(reason = "ABORT: copy_nonoverlapping across two allocations needs the region-disjointness assumption (ABORT.md, Disjointness-assumption sites)")]
     fn extend_from_slice_wild(&mut self, data: &[u8], copy_len: usize) {
         assert!(copy_len <= data.len());
         unsafe {

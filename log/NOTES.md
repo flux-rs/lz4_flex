@@ -203,3 +203,15 @@ advisory. Flux issues filed: #1859–#1863 (plus #1784–#1786 earlier). Reopen 
 - #1863 is fixed or flux gets loop-invariant annotations: the 7
   `compress_internal` output-capacity errors.
 - lz4_flex fixes `duplicate_overlapping`: drop that error.
+
+## Score (2026-10-28)
+
+ABORT/BUG functions are now `trusted` with labelled reasons (harness drill), so
+`cargo flux` is clean: **98 functions processed: 79 checked; 19 trusted**
+(default features, which leave out `frame`).
+
+| trusted reason | functions |
+|---|---:|
+| `ICE:` | 2: `decompress_into{,_with_dict}` (flux-rs/flux#1859). The "37 errors, 0 ICEs" above counted these two internal errors as errors; they are ICEs. (+ 2 in `frame/decompress.rs`, #1785, not compiled under the default features) |
+| `ABORT:` | 16 (35 refinement errors): 9 disjointness sites, `compress_internal`, `compress_into_vec_with_dict`, `PtrSink::from_vec`, 3 × `HashTable*::new`, `wild_copy_from_src` |
+| `BUG:` | 1: `duplicate_overlapping` |

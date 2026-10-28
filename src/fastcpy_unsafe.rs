@@ -70,6 +70,7 @@ pub(crate) fn slice_copy(src: *const u8, dst: *mut u8, num_bytes: usize) {
                       && crate::flux_specs::readable(s, num_bytes) && crate::flux_specs::writable(d, num_bytes)
                       && crate::flux_specs::disjoint(s, d))]
 #[flux_rs::qualifiers(LeSum, Pos, CoversSum)]
+#[flux_rs::trusted(reason = "ABORT: dst < end implies dst + SIZE <= end needs % SIZE reasoning over a const generic (ABORT.md uids 55/56)")]
 fn wild_copy_from_src<const SIZE: usize>(
     mut source: *const u8,
     mut dst: *mut u8,
