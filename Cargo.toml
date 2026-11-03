@@ -85,7 +85,6 @@ path = "benches/binggan_bench.rs"
 
 [package.metadata.flux]
 enabled = true
-cache = true
 
 # `flux` is set by `cargo flux`, not by cargo itself, so it has to be declared
 [lints.rust]
